@@ -5,6 +5,25 @@ import { EV, PHASE, DEFAULT_CAR_ID, PAINT_COLORS, DEFAULT_TRACK_ID, getTrackInfo
 import { NetClient } from '../net/NetClient.js';
 
 const PROFILE_KEY = 'ranran.profile';
+const TOUCH_KEY = 'ranran.touch';
+
+/** Ajustes de los controles táctiles (se guardan en este dispositivo). */
+export const DEFAULT_TOUCH = Object.freeze({
+  mode: 'buttons', // buttons | slider | tilt
+  sensitivity: 1, // 0.5 … 1.5
+  autoGas: false, // acelerar siempre salvo al frenar
+  leftHanded: false, // pedales a la izquierda y dirección a la derecha
+  haptics: true, // vibración en golpes
+  opacity: 0.55,
+});
+
+function loadTouch() {
+  try {
+    const t = JSON.parse(localStorage.getItem(TOUCH_KEY) ?? 'null');
+    if (t && typeof t === 'object') return { ...DEFAULT_TOUCH, ...t };
+  } catch { /* sin almacenamiento */ }
+  return { ...DEFAULT_TOUCH };
+}
 
 function loadProfile() {
   try {
@@ -19,8 +38,9 @@ function saveProfile(p) {
 }
 
 const defaultQuality = () => {
-  const mobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-  return mobile ? 'low' : 'high';
+  const phone = /Android|iPhone|iPod/i.test(navigator.userAgent) && Math.min(screen.width, screen.height) < 600;
+  const touch = navigator.maxTouchPoints > 0 && window.matchMedia?.('(pointer: coarse)').matches;
+  return phone ? 'low' : touch ? 'medium' : 'high';
 };
 
 let net = null;
@@ -71,6 +91,7 @@ export const useGame = create((set, get) => {
       color: stored?.color ?? PAINT_COLORS[0],
     },
     quality: stored?.quality ?? defaultQuality(),
+    touch: loadTouch(),
     pendingRoomCode: initialRoom,
     roomCode: null,
     playerId: null,
@@ -98,6 +119,12 @@ export const useGame = create((set, get) => {
       if (get().roomCode && ('carId' in partial || 'color' in partial)) {
         bindNet().updateProfile({ carId: profile.carId, color: profile.color });
       }
+    },
+
+    setTouchSettings(partial) {
+      const touch = { ...get().touch, ...partial };
+      set({ touch });
+      try { localStorage.setItem(TOUCH_KEY, JSON.stringify(touch)); } catch { /* sin almacenamiento */ }
     },
 
     setQuality(quality) {

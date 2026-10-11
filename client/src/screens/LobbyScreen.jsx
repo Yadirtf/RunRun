@@ -4,6 +4,9 @@ import { useGame } from '../store/gameStore.js';
 import ProfileEditor from '../ui/ProfileEditor.jsx';
 import TrackOutline from '../ui/TrackOutline.jsx';
 import { unlockAudio } from '../engine/Audio.js';
+import { isTouchDevice, enterFullscreen } from '../ui/device.js';
+
+const prepareDevice = () => { unlockAudio(); if (isTouchDevice()) enterFullscreen(); };
 
 export default function LobbyScreen() {
   const room = useGame((s) => s.room);
@@ -87,11 +90,11 @@ export default function LobbyScreen() {
           {racing ? (
             <p className="notice">Hay una carrera en curso. Entrarás en la siguiente.</p>
           ) : isHost ? (
-            <button className="btn primary big" disabled={!room.canStart} onClick={() => { unlockAudio(); startRace(); }}>
+            <button className="btn primary big" disabled={!room.canStart} onClick={() => { prepareDevice(); startRace(); }}>
               {room.canStart ? 'Iniciar carrera' : 'Esperando a que todos estén listos…'}
             </button>
           ) : (
-            <button className={`btn big ${me?.ready ? 'ready' : 'primary'}`} onClick={() => { unlockAudio(); setReady(!me?.ready); }}>
+            <button className={`btn big ${me?.ready ? 'ready' : 'primary'}`} onClick={() => { prepareDevice(); setReady(!me?.ready); }}>
               {me?.ready ? 'Listo ✓ (pulsa para cancelar)' : 'Estoy listo'}
             </button>
           )}

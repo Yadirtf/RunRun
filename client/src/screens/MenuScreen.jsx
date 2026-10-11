@@ -4,6 +4,12 @@ import { useGame } from '../store/gameStore.js';
 import ProfileEditor from '../ui/ProfileEditor.jsx';
 import TrackOutline from '../ui/TrackOutline.jsx';
 import { unlockAudio } from '../engine/Audio.js';
+import TouchSettings from '../ui/TouchSettings.jsx';
+import { isTouchDevice, enterFullscreen } from '../ui/device.js';
+
+const isTouch = isTouchDevice();
+/** En móvil, al empezar a jugar se pasa a pantalla completa y horizontal. */
+const prepareDevice = () => { unlockAudio(); if (isTouch) enterFullscreen(); };
 
 export default function MenuScreen() {
   const profile = useGame((s) => s.profile);
@@ -18,7 +24,7 @@ export default function MenuScreen() {
 
   const nickOk = sanitizeNickname(profile.nickname) !== null;
   const guard = (fn) => () => {
-    unlockAudio();
+    prepareDevice();
     if (!nickOk) return setError(`Escribe un apodo de ${NICKNAME_MIN} a ${NICKNAME_MAX} caracteres.`);
     fn();
   };
@@ -86,7 +92,7 @@ export default function MenuScreen() {
               </button>
             ))}
           </div>
-          <button className="btn" onClick={() => { unlockAudio(); startPractice(practiceTrack, 1); }}>Vuelta de práctica</button>
+          <button className="btn" onClick={() => { prepareDevice(); startPractice(practiceTrack, 1); }}>Vuelta de práctica</button>
 
           <div className="settings-row">
             <span>Calidad gráfica</span>
@@ -96,9 +102,21 @@ export default function MenuScreen() {
               ))}
             </div>
           </div>
+          {isTouch && (
+            <details className="touch-details" open>
+              <summary>Controles táctiles</summary>
+              <TouchSettings />
+            </details>
+          )}
         </section>
       </main>
 
+      {isTouch ? (
+        <footer className="controls-help">
+          <span>Izquierda: dirección · Derecha: gas, freno y freno de mano · Arriba: cámara, volver a pista y pausa</span>
+          <a href="/creditos.html" target="_blank" rel="noopener">Créditos y licencias</a>
+        </footer>
+      ) : (
       <footer className="controls-help">
         <span><kbd>W</kbd><kbd>↑</kbd> acelerar</span>
         <span><kbd>S</kbd><kbd>↓</kbd> frenar / atrás</span>
@@ -109,6 +127,7 @@ export default function MenuScreen() {
         <span>Mando compatible</span>
         <a href="/creditos.html" target="_blank" rel="noopener">Créditos y licencias</a>
       </footer>
+      )}
     </div>
   );
 }

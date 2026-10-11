@@ -25,7 +25,13 @@ Otros comandos:
 
 ## Controles
 
-W/↑ acelerar · S/↓ frenar y marcha atrás · A/D o ←/→ girar · Espacio freno de mano · C cámara (persecución, lejana, capó) · R volver a la pista · M silenciar · Esc menú. Funciona con mando (gatillos, stick izquierdo, B freno de mano, Y volver a pista) y en móvil con controles táctiles.
+W/↑ acelerar · S/↓ frenar y marcha atrás · A/D o ←/→ girar · Espacio freno de mano · C cámara (persecución, lejana, capó) · R volver a la pista · M silenciar · Esc menú. Funciona con mando (gatillos, stick izquierdo, B freno de mano, Y volver a pista).
+
+**Móvil y tablet** (se activan solos en pantallas táctiles; se juega en horizontal):
+- Dirección a elegir en Ajustes (menú o pausa ⏸): *Botones* ◀ ▶ con giro progresivo, *Deslizador* analógico (apoya el dedo y desliza) o *Inclinación* (gira el dispositivo como un volante; botón Centrar para calibrar).
+- Pedales a la derecha: GAS, FRENO y freno de mano, se pueden pulsar a la vez. Arriba: cámara, volver a pista y pausa.
+- Ajustes: sensibilidad, transparencia de los botones, acelerador automático, modo zurdo y vibración. Se guardan en el dispositivo.
+- Al empezar a jugar pasa a pantalla completa y bloquea la orientación horizontal donde el navegador lo permite (Android). En iPhone, para jugar a pantalla completa, usa Compartir → Añadir a pantalla de inicio.
 
 ## Stack elegido
 

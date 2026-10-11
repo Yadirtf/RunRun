@@ -254,7 +254,10 @@ export class Game {
         }
       }
       if (this.raceStarted && (this.vehicle.upsideDownTime > 2.5 || this.state.position.y < -5)) this.resetToTrack();
-      if (this.vehicle.impact > 0.15) this.sound?.impact(this.vehicle.impact);
+      if (this.vehicle.impact > 0.15) {
+        this.sound?.impact(this.vehicle.impact);
+        this.opts.onEvent?.({ type: 'impact', strength: this.vehicle.impact });
+      }
     }
 
     for (const rc of this.remotes.values()) rc.update(now, dt);
@@ -391,6 +394,10 @@ export class Game {
 
   /** Controles táctiles (pantallas móviles). */
   setTouch(partial) { Object.assign(this.input.touch, partial); }
+
+  cycleCamera() { this.cameraRig.cycle(); }
+
+  toggleMute() { this.muted = !this.muted; setMuted(this.muted); }
 
   dispose() {
     this.disposed = true;

@@ -8,8 +8,10 @@ import Standings from '../components/hud/Standings.jsx';
 import Results from '../components/hud/Results.jsx';
 import TouchControls from '../components/hud/TouchControls.jsx';
 import CornerAlert from '../components/hud/CornerAlert.jsx';
+import TouchSettings from '../ui/TouchSettings.jsx';
+import { isTouchDevice, canFullscreen, enterFullscreen, vibrate } from '../ui/device.js';
 
-const isTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+const isTouch = isTouchDevice();
 
 export default function RaceScreen() {
   const race = useGame((s) => s.race);
@@ -65,6 +67,7 @@ export default function RaceScreen() {
           if (practice) store.finishPractice({ time: ev.time, bestLap: g.tracker.bestLap, laps: g.tracker.lapsDone });
         }
         if (ev.type === 'reset') setFlash({ text: 'De vuelta a la pista', at: Date.now() });
+        if (ev.type === 'impact') vibrate(Math.round(20 + ev.strength * 60), useGame.getState().touch.haptics);
       },
     });
     g.init((p) => setProgress(p))
@@ -142,7 +145,7 @@ export default function RaceScreen() {
       )}
 
       {game && hud && (
-        <div className="hud">
+        <div className={`hud ${isTouch ? 'touch' : ''}`}>
           <div className="hud-top-left">
             {!practice && <div className="hud-pos"><b>{hud.position}</b><small>/{hud.total}</small></div>}
             <div className="hud-laps">
@@ -171,22 +174,26 @@ export default function RaceScreen() {
           {hud.spectating && <div className="warning soft">Modo espectador: entrarás en la próxima carrera</div>}
           {flash && Date.now() - flash.at < 2500 && <div className="flash" key={flash.at}>{flash.text}</div>}
           {hud.finished && !results && <div className="flash persistent">¡Terminado! Esperando al resto…</div>}
-          {isTouch && !hud.spectating && <TouchControls game={game} />}
+          {isTouch && !hud.spectating && !results && <TouchControls game={game} onPause={() => setPaused(true)} />}
         </div>
       )}
 
       {paused && !results && (
         <div className="overlay pause">
-          <div className="panel">
+          <div className="panel pause-panel">
             <h2>Pausa</h2>
             <p className="muted">{practice ? 'La práctica sigue corriendo.' : 'La carrera sigue en marcha para los demás.'}</p>
             <div className="actions">
               <button className="btn primary" onClick={() => setPaused(false)}>Continuar</button>
+              {isTouch && canFullscreen() && <button className="btn" onClick={enterFullscreen}>Pantalla completa</button>}
               <button className="btn" onClick={leave}>{practice ? 'Salir al menú' : 'Abandonar la sala'}</button>
             </div>
+            {isTouch && <TouchSettings />}
           </div>
         </div>
       )}
+
+      {isTouch && <div className="rotate-hint"><span>📱↻</span><p>Gira el dispositivo en horizontal para jugar</p></div>}
 
       {results && (
         <Results
