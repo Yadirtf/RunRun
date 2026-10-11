@@ -1,0 +1,32 @@
+{
+  "name": "ranran",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RanRan: juego de carreras 3D multijugador en el navegador con salas compartidas",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "test": "npm test -w shared && npm test -w server",
+    "assets": "node scripts/fetch-assets.mjs",
+    "tracks": "node scripts/build-tracks.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.2.0",
+    "@gltf-transform/extensions": "^4.2.0",
+    "@gltf-transform/functions": "^4.2.0",
+    "meshoptimizer": "^0.25.0",
+    "sharp": "^0.35.5"
+  }
+}

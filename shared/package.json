@@ -1,0 +1,14 @@
+{
+  "name": "@ranran/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./tracks/*": "./tracks/*"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}

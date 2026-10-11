@@ -1,0 +1,17 @@
+# Despliegue en Render (https://render.com) como un único servicio web:
+# el servidor Node sirve el juego compilado y las salas en tiempo real (WebSockets)
+# desde el mismo dominio, así que no hace falta configurar CORS.
+services:
+  - type: web
+    name: ranran
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
