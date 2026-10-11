@@ -60,22 +60,24 @@ window.__test = {
     const setSurface = v.setSurface;
     v.setSurface('asphalt'); v.setSurface = () => {};
     const half = g.track.groundSize / 2, cx = (L.bounds.minX + L.bounds.maxX) / 2;
-    v.teleport(cx - half + 60, L.bounds.minZ - 450, Math.PI / 2);
-    let t100 = null, i = 0;
-    for (; i < 60 * 40 && v.body.translation().x < cx + half - 400; i++) {
-      g.setTouch({ throttle: 1, brake: 0, steer: 0 }); h.step();
-      if (t100 === null && g.state.speed >= 27.78) t100 = i / 60;
-    }
-    const vmax = g.state.speed * 3.6;
-    while (g.state.speed > 27.78) { g.setTouch({ throttle: 0, brake: 1 }); h.step(); }
-    const p0 = v.body.translation();
-    let frames = 0;
-    while (g.state.speed > 0.3 && frames < 600) { g.setTouch({ throttle: 0, brake: 1 }); h.step(); frames++; }
-    const p1 = v.body.translation();
+    const stopFrom = (kmh) => {
+      v.teleport(cx - half + 60, L.bounds.minZ - 450, Math.PI / 2);
+      let t100 = null, i = 0;
+      while (g.state.speed * 3.6 < kmh && i < 60 * 30) {
+        g.setTouch({ throttle: 1, brake: 0, steer: 0 }); h.step(); i++;
+        if (t100 === null && g.state.speed >= 27.78) t100 = i / 60;
+      }
+      const p0 = v.body.translation();
+      let frames = 0;
+      while (g.state.speed > 0.3 && frames < 60 * 20) { g.setTouch({ throttle: 0, brake: 1, steer: 0 }); h.step(); frames++; }
+      const p1 = v.body.translation();
+      return { t100, dist: +Math.hypot(p1.x - p0.x, p1.z - p0.z).toFixed(1), secs: +(frames / 60).toFixed(2) };
+    };
+    const a = stopFrom(100), b = stopFrom(200);
     v.setSurface = setSurface;
     g.setTouch({ throttle: 0, brake: 0 });
     h.restore();
-    return { t0_100: t100, vmaxKmh: +vmax.toFixed(0), brake100m: +Math.hypot(p1.x - p0.x, p1.z - p0.z).toFixed(1) };
+    return { t0_100: a.t100, brake100m: a.dist, brake200m: b.dist, brake200s: b.secs };
   },
 
   /** Vuelta con piloto automático simple. Devuelve tiempo y salidas de pista. */

@@ -105,6 +105,7 @@ export class Vehicle {
     this.slip = 0;
     this.braking = false;
     this.surfaceGrip = 1;
+    this.brakeTransfer = 0;
     this.surfaceDrag = 0;
     this.upsideDownTime = 0;
     this.impact = 0;
@@ -209,7 +210,18 @@ export class Vehicle {
       // Rapier interpreta el freno como impulso por paso (N·s).
       c.setWheelBrake(i, b + frozenBrake);
     }
-    const rearSide = input.handbrake ? P.sideFriction * 0.42 : P.sideFriction;
+    // Transferencia de peso al frenar: el morro gana agarre y la trasera lo pierde,
+    // así que frenar fuerte girando hace que la trasera derrape un poco (como en un coche real).
+    const transfer = brake * Math.min(absSpeed / 25, 1) * (this.gear > 0 ? 1 : 0);
+    this.brakeTransfer += (transfer - this.brakeTransfer) * Math.min(1, dt * 8);
+    const t = this.brakeTransfer;
+    const base = P.frictionSlip * this.surfaceGrip;
+    c.setWheelFrictionSlip(WHEEL_FL, base * (1 + 0.12 * t));
+    c.setWheelFrictionSlip(WHEEL_FR, base * (1 + 0.12 * t));
+    c.setWheelFrictionSlip(WHEEL_RL, base * P.rearGripScale * (1 - 0.18 * t));
+    c.setWheelFrictionSlip(WHEEL_RR, base * P.rearGripScale * (1 - 0.18 * t));
+    let rearSide = P.sideFriction * (1 - 0.22 * t);
+    if (input.handbrake) rearSide = P.sideFriction * 0.42;
     c.setWheelSideFrictionStiffness(WHEEL_RL, rearSide);
     c.setWheelSideFrictionStiffness(WHEEL_RR, rearSide);
 

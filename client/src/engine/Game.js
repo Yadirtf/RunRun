@@ -11,6 +11,7 @@ import { RemoteCar } from './RemoteCar.js';
 import { CameraRig } from './CameraRig.js';
 import { Input } from './Input.js';
 import { Effects } from './Effects.js';
+import { CornerGuide } from './CornerGuide.js';
 import { CarSound, beep, updateListener, setMuted } from './Audio.js';
 
 const QUALITY = {
@@ -108,6 +109,9 @@ export class Game {
       this.physics = new PhysicsWorld();
       this.track = await buildTrack(this.layout, this.physics, { quality: this.opts.quality });
       scene.add(this.track.group);
+      this.cornerGuide = new CornerGuide(this.layout);
+      this.markerDisposables = [];
+      this.cornerGuide.buildMarkers(this.track.group, (o) => { this.markerDisposables.push(o); return o; });
       this.effects = new Effects(scene);
 
       // ---------- Coche local ----------
@@ -368,6 +372,7 @@ export class Game {
       offTrack: this.vehicle?.surface === 'grass',
       finished: this.finished,
       cameraMode: this.cameraRig.modeName,
+      corner: this.vehicle && !this.finished ? this.cornerGuide.next(this.layout.project(s.position.x, s.position.z, tr.hint).s, s.speed) : null,
       muted: this.muted,
     };
   }
@@ -397,6 +402,7 @@ export class Game {
     this.effects?.dispose();
     this.vehicle?.dispose();
     this.visual?.dispose();
+    this.markerDisposables?.forEach((o) => o.dispose?.());
     this.track?.dispose();
     this.physics?.dispose();
     this.envMap?.dispose();

@@ -7,6 +7,7 @@ import Minimap from '../components/hud/Minimap.jsx';
 import Standings from '../components/hud/Standings.jsx';
 import Results from '../components/hud/Results.jsx';
 import TouchControls from '../components/hud/TouchControls.jsx';
+import CornerAlert from '../components/hud/CornerAlert.jsx';
 
 const isTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
@@ -164,6 +165,7 @@ export default function RaceScreen() {
           {hud.countdown > 3 && <div className="warning soft">Preparados… esperando la salida</div>}
           {hud.countdown > 0 && hud.countdown <= 3 && <div className="countdown" key={hud.countdown}>{hud.countdown}</div>}
           {hud.countdown === 0 && hud.raceTime < 1200 && <div className="countdown go">¡YA!</div>}
+          {!hud.spectating && hud.countdown === 0 && !hud.wrongWay && <CornerAlert corner={hud.corner} speedKmh={hud.speedKmh} />}
           {hud.wrongWay && <div className="warning">Sentido contrario</div>}
           {!hud.wrongWay && hud.offTrack && <div className="warning soft">Fuera de pista</div>}
           {hud.spectating && <div className="warning soft">Modo espectador: entrarás en la próxima carrera</div>}

@@ -52,9 +52,23 @@ async function loadTemplate(model) {
     const wheelData = model.wheels.map((name) => {
       const node = gltf.scene.getObjectByName(name);
       if (!node) return null;
-      box.setFromObject(node, true);
+      // El centro del buje sale del neumático (la pinza de freno sobresale y desplazaría la caja).
+      const parts = node.children.filter((c) => !/brake/i.test(c.name));
+      let tire = node, best = -1;
+      for (const c of parts) {
+        box.setFromObject(c, true);
+        const v = box.getSize(new THREE.Vector3());
+        if (v.x * v.y * v.z > best) { best = v.x * v.y * v.z; tire = c; }
+      }
+      box.setFromObject(tire, true);
       const size = box.getSize(new THREE.Vector3());
-      return { center: box.getCenter(new THREE.Vector3()), radius: size.y / 2, width: size.x };
+      // En el modelo original las ruedas delanteras vienen giradas (pose de exposición).
+      // El eje local X de la rueda es su eje de giro: calculamos la rotación que lo
+      // devuelve al eje X del coche para que la rueda quede recta.
+      const q = node.getWorldQuaternion(new THREE.Quaternion());
+      const axle = new THREE.Vector3(1, 0, 0).applyQuaternion(q).normalize();
+      const straighten = new THREE.Quaternion().setFromUnitVectors(axle, new THREE.Vector3(Math.sign(axle.x) || 1, 0, 0));
+      return { center: box.getCenter(new THREE.Vector3()), radius: size.y / 2, width: Math.min(size.x, size.z), straighten };
     });
     const bounds = new THREE.Box3().setFromObject(gltf.scene, true);
 
@@ -119,8 +133,13 @@ export async function createCarVisual(carDef, color, { shadows = true } = {}) {
     const spin = new THREE.Group();
     steer.add(spin);
     root.add(steer);
+    // Pivote extra que endereza la rueda alrededor de su propio centro.
+    const fix = new THREE.Group();
+    spin.add(fix);
     steer.updateMatrixWorld(true);
-    spin.attach(node);
+    fix.attach(node);
+    fix.quaternion.copy(data.straighten);
+    fix.updateMatrixWorld(true);
     // Las pinzas de freno giran con la dirección pero no con la rueda.
     const pads = [];
     node.traverse((c) => { if (/brakepad/i.test(c.name)) pads.push(c); });
