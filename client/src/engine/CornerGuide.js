@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 
 const MIN_RADIUS = 260; // por encima, se considera recta o curva a fondo
-const GRIP_MU = 1.1; // agarre que se asume para la velocidad recomendada
-const BRAKE_DECEL = 10; // deceleración "cómoda" para calcular el punto de frenada (m/s²)
+const DEFAULT_MU = 1.1; // agarre que se asume para la velocidad recomendada
+const BRAKE_DECEL = 9; // deceleración "cómoda" para calcular el punto de frenada (m/s²)
 
 const SEVERITY = [
   { max: 28, label: 'Horquilla', level: 1 },
@@ -17,8 +17,10 @@ const SEVERITY = [
 
 export class CornerGuide {
   /** @param {import('@ranran/shared').TrackLayout} layout */
-  constructor(layout) {
+  /** @param {number} mu agarre del coche (se usa para la velocidad recomendada) */
+  constructor(layout, mu = DEFAULT_MU) {
     this.layout = layout;
+    this.mu = mu;
     this.corners = this.#detect();
   }
 
@@ -68,7 +70,17 @@ export class CornerGuide {
       .map((r) => {
         const radius = 1 / Math.abs(k[r.peak]);
         const sev = SEVERITY.find((s) => radius < s.max);
+        // Perfil de velocidad a lo largo de la curva (en curvas largas lo cerrado puede llegar tarde).
+        const profile = [];
+        const len = (L.cum[r.to] - L.cum[r.from] + L.length) % L.length;
+        for (let i = r.from, off = 0; off <= len + 0.1; i = (i + 1) % n) {
+          const kk = Math.max(Math.abs(k[i]), 1e-4);
+          profile.push({ off, speed: Math.min(Math.sqrt((9.81 * this.mu) / kk), 95) });
+          off += L.cum[i + 1] - L.cum[i];
+          if (i === r.to) break;
+        }
         return {
+          profile,
           entryS: L.cum[r.from],
           apexS: L.cum[r.peak],
           exitS: L.cum[r.to],
@@ -76,7 +88,7 @@ export class CornerGuide {
           radius,
           level: sev.level,
           label: sev.label,
-          speed: Math.min(Math.sqrt(9.81 * GRIP_MU * radius), 95),
+          speed: Math.min(Math.sqrt(9.81 * this.mu * radius), 95),
         };
       })
       .sort((a, b) => a.entryS - b.entryS);
@@ -90,26 +102,44 @@ export class CornerGuide {
     if (!this.corners.length) return null;
     const L = this.layout.length;
     const v = Math.max(speed, 0);
-    let best = null, bestDist = Infinity;
+    const lookahead = Math.max(160, v * 7);
+    // Entre las curvas cercanas se avisa de la que obliga a frenar antes; una curva rápida
+    // que va primero no debe tapar a la horquilla que viene detrás.
+    let best = null;
     for (const c of this.corners) {
       let d = (c.entryS - s + L) % L;
-      // Si ya estamos dentro de la curva, la distancia es 0 hasta salir.
       const inside = (s - c.entryS + L) % L < (c.exitS - c.entryS + L) % L;
       if (inside) d = 0;
-      if (d < bestDist) { bestDist = d; best = c; }
+      if (d > lookahead) continue;
+      // Punto crítico: el de la curva que exige frenar antes (el más cerrado no siempre es el primero).
+      const along = inside ? (s - c.entryS + L) % L : -d;
+      let margin = Infinity, brakeDist = 0, crit = null;
+      for (const pt of c.profile) {
+        const ahead = pt.off - along;
+        if (ahead < 0) continue;
+        const need = v > pt.speed ? (v * v - pt.speed * pt.speed) / (2 * BRAKE_DECEL) : 0;
+        if (ahead - need < margin) { margin = ahead - need; brakeDist = need; crit = pt; }
+      }
+      if (!crit) continue;
+      const dTarget = margin + brakeDist;
+      const cand = { c, d, brakeDist, margin, dTarget, crit };
+      if (!best) { best = cand; continue; }
+      const needs = brakeDist > 0, bestNeeds = best.brakeDist > 0;
+      if (needs && (!bestNeeds || margin < best.margin)) best = cand;
+      else if (!needs && !bestNeeds && d < best.d) best = cand;
     }
-    const lookahead = Math.max(160, v * 6);
-    if (!best || bestDist > lookahead) return null;
-    // Una curva rápida que se puede tomar a esta velocidad no necesita aviso fuerte.
-    const brakeDist = v > best.speed ? (v * v - best.speed * best.speed) / (2 * BRAKE_DECEL) : 0;
-    const margin = bestDist - brakeDist;
+    if (!best) return null;
+    const { c, d, brakeDist, margin, dTarget, crit } = best;
+    // Margen de reacción: el tiempo que tarda una persona en ver el aviso y pisar el freno.
+    const react = v * 0.9;
     let state;
-    if (bestDist === 0) state = 'in';
-    else if (bestDist < Math.max(v * 0.45, 6)) state = 'turn';
-    else if (brakeDist > 0 && margin < v * 0.6) state = 'brake';
-    else if (brakeDist > 0 && margin < v * 2.2) state = 'prepare';
+    if (brakeDist > 0 && dTarget > 0 && margin < react) state = 'brake';
+    else if (d === 0) state = 'in';
+    else if (d < Math.max(v * 0.45, 6)) state = 'turn';
+    else if (brakeDist > 0 && margin < react + v * 2) state = 'prepare';
     else state = 'info';
-    return { ...best, distance: bestDist, state, targetKmh: best.speed * 3.6, brakeDist };
+    const targetKmh = (brakeDist > 0 ? crit.speed : c.speed) * 3.6;
+    return { ...c, distance: d, state, targetKmh, speed: targetKmh / 3.6, brakeDist };
   }
 
   /** Carteles de frenada y chevrones en la pista. */

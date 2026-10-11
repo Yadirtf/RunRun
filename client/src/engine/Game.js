@@ -109,7 +109,9 @@ export class Game {
       this.physics = new PhysicsWorld();
       this.track = await buildTrack(this.layout, this.physics, { quality: this.opts.quality });
       scene.add(this.track.group);
-      this.cornerGuide = new CornerGuide(this.layout);
+      // Velocidad recomendada según el agarre del coche propio (un poco conservadora).
+      const myPhys = getCar(this.opts.local.carId).physics;
+      this.cornerGuide = new CornerGuide(this.layout, 0.85 * myPhys.frictionSlip * Math.min(1, myPhys.rearGripScale));
       this.markerDisposables = [];
       this.cornerGuide.buildMarkers(this.track.group, (o) => { this.markerDisposables.push(o); return o; });
       this.effects = new Effects(scene);

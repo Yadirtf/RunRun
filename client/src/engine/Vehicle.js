@@ -105,7 +105,6 @@ export class Vehicle {
     this.slip = 0;
     this.braking = false;
     this.surfaceGrip = 1;
-    this.brakeTransfer = 0;
     this.surfaceDrag = 0;
     this.upsideDownTime = 0;
     this.impact = 0;
@@ -198,37 +197,37 @@ export class Vehicle {
     if (this.gear === -1) wheelForce = Math.min(wheelForce, 4000);
     for (let i = 0; i < 4; i++) c.setWheelEngineForce(i, dir * wheelForce * this.driveSplit[i]);
 
-    // ---------- Frenos ----------
+    // ---------- Frenos con ABS ----------
+    // El freno nunca pide más de lo que el neumático puede dar: si se bloquea, la rueda
+    // patina y deja de girar el coche (pasa de largo). Con ABS se puede frenar y girar a la vez.
     this.braking = brake > 0.05 && absSpeed > 0.5;
-    const frozenBrake = this.frozen ? P.brakeForce * 2 : 0;
-    const handbrake = input.handbrake ? P.brakeForce * 0.9 : 0;
+    const load = (P.mass * 9.81 + 0.5 * RHO * P.downforce * _v.lengthSq()) / 4;
+    const steerUse = Math.min(Math.abs(this.steerAngle) / (P.steerMax * 0.5), 1);
+    const handbrake = input.handbrake ? P.brakeForce * 0.6 : 0;
     for (let i = 0; i < 4; i++) {
-      const share = i < 2 ? 0.6 : 0.4;
-      let b = brake * P.brakeForce * share * 2;
-      if (i >= 2) b += handbrake;
+      const front = i < 2;
+      const mu = P.frictionSlip * this.surfaceGrip * (front ? 1 : P.rearGripScale);
+      // Parte del agarre se reserva para girar cuanto más volante hay.
+      const abs = (front ? 0.92 : 0.78) - 0.3 * steerUse;
+      const cap = abs * load * mu * dt;
+      let b = Math.min(brake * P.brakeForce * (front ? 0.6 : 0.4) * 2, absSpeed > 1 ? cap : Infinity);
+      if (!front) b += handbrake;
       if (throttle < 0.02 && brake < 0.02) b += 5; // freno motor
+      if (this.frozen) b += P.brakeForce * 2;
       // Rapier interpreta el freno como impulso por paso (N·s).
-      c.setWheelBrake(i, b + frozenBrake);
+      c.setWheelBrake(i, b);
     }
-    // Transferencia de peso al frenar: el morro gana agarre y la trasera lo pierde,
-    // así que frenar fuerte girando hace que la trasera derrape un poco (como en un coche real).
-    const transfer = brake * Math.min(absSpeed / 25, 1) * (this.gear > 0 ? 1 : 0);
-    this.brakeTransfer += (transfer - this.brakeTransfer) * Math.min(1, dt * 8);
-    const t = this.brakeTransfer;
     const base = P.frictionSlip * this.surfaceGrip;
-    c.setWheelFrictionSlip(WHEEL_FL, base * (1 + 0.12 * t));
-    c.setWheelFrictionSlip(WHEEL_FR, base * (1 + 0.12 * t));
-    c.setWheelFrictionSlip(WHEEL_RL, base * P.rearGripScale * (1 - 0.18 * t));
-    c.setWheelFrictionSlip(WHEEL_RR, base * P.rearGripScale * (1 - 0.18 * t));
-    let rearSide = P.sideFriction * (1 - 0.22 * t);
-    if (input.handbrake) rearSide = P.sideFriction * 0.42;
+    for (let i = 0; i < 4; i++) c.setWheelFrictionSlip(i, base * (i < 2 ? 1 : P.rearGripScale));
+    // Freno de mano: la trasera pierde agarre lateral para que el coche rote.
+    const rearSide = input.handbrake && absSpeed > 4 ? P.sideFriction * 0.55 : P.sideFriction;
     c.setWheelSideFrictionStiffness(WHEEL_RL, rearSide);
     c.setWheelSideFrictionStiffness(WHEEL_RR, rearSide);
 
     // ---------- Dirección (sensible a la velocidad) ----------
-    const speedFactor = 1 / (1 + absSpeed / 24);
-    const target = -input.steer * P.steerMax * (0.25 + 0.75 * speedFactor);
-    const rate = (Math.sign(target) !== Math.sign(this.steerAngle) ? 6 : 3.2) * dt;
+    const speedFactor = 1 / (1 + absSpeed / 28);
+    const target = -input.steer * P.steerMax * (0.3 + 0.7 * speedFactor);
+    const rate = (Math.sign(target) !== Math.sign(this.steerAngle) ? 6 : 3.6) * dt;
     this.steerAngle += Math.max(-rate, Math.min(rate, target - this.steerAngle));
     c.setWheelSteering(WHEEL_FL, this.steerAngle);
     c.setWheelSteering(WHEEL_FR, this.steerAngle);
@@ -248,6 +247,39 @@ export class Vehicle {
     if (grounded) body.addForce({ x: -_up.x * downforce, y: -_up.y * downforce, z: -_up.z * downforce }, true);
 
     c.updateVehicle(dt);
+
+    // ---------- Control de estabilidad y ayuda al derrape ----------
+    // Sin ayudas, un coche por raycast trompea o desliza recto con facilidad. Esto imita
+    // lo que haría un piloto (contravolante) y el ESP de un coche real, sin quitar el derrape.
+    if (grounded && absSpeed > 4 && this.gear > 0) {
+      const av = body.angvel();
+      const yawRate = av.y;
+      const wheelbase = 2.8;
+      // Giro que pide el volante (limitado por el agarre disponible).
+      const maxRate = (P.frictionSlip * 9.81 * 1.15) / absSpeed;
+      let wanted = (Math.sign(speed) * absSpeed * Math.tan(this.steerAngle)) / wheelbase;
+      wanted = Math.max(-maxRate, Math.min(maxRate, wanted));
+      const drifting = input.handbrake || this.slip > 0.35;
+      const Iy = (P.mass / 12) * (2.0 * 2.0 + 4.3 * 4.3);
+      if (drifting) {
+        // Derrape: el volante controla la rotación y el coche avanza hacia donde apunta.
+        const target = wanted * 1.5;
+        const err = target - yawRate;
+        body.applyTorqueImpulse({ x: 0, y: err * Iy * Math.min(1, dt * 4), z: 0 }, true);
+        const vLat = _v.dot(_right);
+        const pull = -vLat * P.mass * Math.min(1, dt * 1.6);
+        body.applyImpulse({ x: _right.x * pull, y: 0, z: _right.z * pull }, true);
+      } else {
+        // ESP: si gira bastante más de lo que pide el volante, corrige (evita trompos).
+        const excess = yawRate - wanted;
+        const margin = 0.35;
+        if (Math.abs(excess) > margin) {
+          const corr = (excess - Math.sign(excess) * margin) * Iy * Math.min(1, dt * 6);
+          body.applyTorqueImpulse({ x: 0, y: -corr, z: 0 }, true);
+        }
+      }
+      if (Math.abs(yawRate) > 2.6) body.setAngvel({ x: av.x, y: Math.sign(yawRate) * 2.6, z: av.z }, true);
+    }
 
     // ---------- Derrape (para humo, marcas y sonido) ----------
     const lateral = Math.abs(_v.dot(_right));
