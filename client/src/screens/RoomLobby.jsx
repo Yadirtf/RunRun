@@ -5,6 +5,7 @@ import { PlayerList } from '../components/PlayerList.jsx';
 import { TrackPicker } from '../components/TrackPicker.jsx';
 import { GarageCard, CarShowroom } from '../components/CarSelector.jsx';
 import { TRACKS } from '@runrun/shared/tracks';
+import { enterLandscape } from '../lib/landscape.js';
 
 /** Pantalla 2: sala de espera con código/enlace, jugadores, pista y [LISTO]/[INICIAR]. */
 export function RoomLobby({ client }) {
@@ -100,7 +101,10 @@ export function RoomLobby({ client }) {
                 type="button"
                 className="btn primary btn-lg"
                 disabled={!allReady}
-                onClick={() => client.startRace()}
+                onClick={() => {
+                  enterLandscape();
+                  client.startRace();
+                }}
                 title={allReady ? '' : 'Esperando a que todos estén listos'}
               >
                 {allReady ? 'Iniciar carrera' : `Esperando ${readyCount}/${others.length} listos`}
@@ -109,7 +113,10 @@ export function RoomLobby({ client }) {
               <button
                 type="button"
                 className={`btn btn-lg ${me?.ready ? 'success' : 'primary'}`}
-                onClick={() => client.setReady(!me?.ready)}
+                onClick={() => {
+                  if (!me?.ready) enterLandscape();
+                  client.setReady(!me?.ready);
+                }}
               >
                 {me?.ready ? '✓ Listo (cancelar)' : 'Estoy listo'}
               </button>

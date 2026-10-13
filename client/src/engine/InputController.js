@@ -5,7 +5,7 @@
 export class InputController {
   constructor(target = window) {
     this.keys = new Set();
-    this.touch = { throttle: 0, brake: 0, steer: 0 };
+    this.touch = { throttle: 0, brake: 0, steer: 0, handbrake: 0 };
     this.actions = new Set();
     this.smoothedSteer = 0;
     this.onKeyDown = (e) => {
@@ -51,6 +51,7 @@ export class InputController {
     }
     throttle = Math.max(throttle, this.touch.throttle);
     brake = Math.max(brake, this.touch.brake);
+    handbrake = handbrake || this.touch.handbrake > 0;
     if (this.touch.steer) steerTarget = this.touch.steer;
 
     // El teclado es digital: suavizar para que la dirección no sea brusca.

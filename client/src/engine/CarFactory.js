@@ -274,6 +274,7 @@ export function createProceduralCar(def, color) {
     envMapIntensity: 1.2,
   });
   const tailMat = new THREE.MeshStandardMaterial({ color: '#4a0000', emissive: '#ff1010', emissiveIntensity: 0.6, roughness: 0.2 });
+  const reverseMat = new THREE.MeshStandardMaterial({ color: '#cfcfcf', emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.2 });
 
   const chassis = new THREE.Group();
   chassis.name = 'chassis';
@@ -395,6 +396,10 @@ export function createProceduralCar(def, color) {
     const tl = new THREE.Mesh(tailGeo, tailMat);
     tl.position.set(side * d.widthAt(tailZ - 0.14) * (body.roundLights ? 0.62 : 0.5), tailY, tailZ - 0.14);
     chassis.add(tl);
+    // Luz de marcha atrás junto al piloto.
+    const rv = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.04), reverseMat);
+    rv.position.set(side * d.widthAt(tailZ - 0.14) * (body.roundLights ? 0.36 : 0.22), tailY - 0.02, tailZ - 0.15);
+    chassis.add(rv);
     const mirrorGeo = new THREE.BoxGeometry(0.16, 0.09, 0.14);
     const mirror = new THREE.Mesh(mirrorGeo, body.chrome ? m.chrome : paint);
     mirror.position.set(side * (d.widthAt(d.front) * 0.9), d.yt(d.front) + 0.02, d.front - 0.18);
@@ -493,11 +498,11 @@ export function createProceduralCar(def, color) {
     return pivot;
   });
 
-  root.userData = { ...root.userData, paint, tailMat, dim, disposables: [paint, tailMat, root.userData.stripeMat].filter(Boolean) };
+  root.userData = { ...root.userData, paint, tailMat, reverseMat, dim, disposables: [paint, tailMat, reverseMat, root.userData.stripeMat].filter(Boolean) };
   root.traverse((o) => {
     if (o.isMesh && o.geometry && !root.userData.disposables.includes(o.geometry)) root.userData.disposables.push(o.geometry);
   });
-  return { root, wheels, tailMat, dim };
+  return { root, wheels, tailMat, reverseMat, dim };
 }
 
 /** Carga un GLB con nodos chassis/wheel_*; si no hay GLB devuelve el procedural. */

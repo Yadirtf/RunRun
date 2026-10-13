@@ -10,6 +10,7 @@ import { Minimap } from '../components/HUD/Minimap.jsx';
 import { LapTimer } from '../components/HUD/LapTimer.jsx';
 import { Leaderboard } from '../components/HUD/Leaderboard.jsx';
 import { TouchControls } from '../components/TouchControls.jsx';
+import { enterLandscape, exitLandscape, isTouchDevice } from '../lib/landscape.js';
 
 /** Pantalla 3: carga de la pista, cuenta atrás, carrera con HUD y resultados. */
 export function GameScreen({ client }) {
@@ -94,15 +95,19 @@ export function GameScreen({ client }) {
   }, []);
 
   const exit = () => {
+    exitLandscape();
     client.leaveRoom();
     leave();
   };
+  const touch = isTouchDevice();
+  // Al salir de la pantalla de juego, devolver la orientación libre.
+  useEffect(() => exitLandscape, []);
 
   const showLoading = !ready || !race?.startTime;
   const total = hud?.standings.length ?? race?.players.length ?? 1;
 
   return (
-    <div className="screen game-screen">
+    <div className={`screen game-screen ${touch ? 'is-touch' : ''}`} onPointerDown={touch ? enterLandscape : undefined}>
       <canvas ref={canvasRef} className="game-canvas" />
 
       {ready && hud && (
@@ -122,7 +127,7 @@ export function GameScreen({ client }) {
           <Countdown raceMs={hud.raceMs} />
           {hud.wrongWay && !hud.finished && <div className="banner warn">¡Sentido contrario!</div>}
           {hud.finished && !results && <div className="banner finish">¡Meta! Esperando al resto…</div>}
-          {hud.raceMs != null && hud.raceMs < 6000 && (
+          {!touch && hud.raceMs != null && hud.raceMs < 6000 && (
             <div className="controls-hint">W/↑ acelerar · S/↓ frenar · A D girar · Espacio freno de mano · R recolocar · C cámara · M sonido</div>
           )}
           <button type="button" className="btn ghost exit-btn" onClick={exit} title="Salir de la carrera">Salir</button>

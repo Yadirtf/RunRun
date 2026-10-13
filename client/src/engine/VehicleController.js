@@ -89,6 +89,9 @@ export class VehicleController {
     this.slip = 0;
     this.flipTimer = 0;
     this.airTime = 0;
+    this.reverseHold = 0;
+    /** Marcha atrás engranada (freno mantenido con el coche parado). */
+    this.reversing = false;
     this.reset(spawn);
   }
 
@@ -100,6 +103,8 @@ export class VehicleController {
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.steer = 0;
     this.flipTimer = 0;
+    this.reverseHold = 0;
+    this.reversing = false;
   }
 
   /** Vector local del chasis rotado a mundo. */
@@ -151,17 +156,33 @@ export class VehicleController {
     if (locked) {
       brake = s.brakeForce;
     } else {
-      if (input.throttle > 0) {
-        // Curva de par: plena hasta 75% de la punta y cae a 0 en la velocidad máxima.
-        const r = this.forwardSpeed / maxMs;
-        const curve = r < 0.75 ? 1 : Math.max(0, 1 - (r - 0.75) / 0.25);
-        engine = s.engineForce * input.throttle * curve;
+      // Pedal de freno = reversa: con el coche detenido, mantenerlo pisado un
+      // instante engrana la marcha atrás; soltarlo o acelerar la desengrana.
+      const stopped = Math.abs(this.forwardSpeed) < 0.8;
+      if (input.brake > 0 && input.throttle === 0) {
+        if (stopped || this.reversing) this.reverseHold += dt;
+      } else {
+        this.reverseHold = 0;
+        this.reversing = false;
       }
-      if (input.brake > 0) {
-        if (this.forwardSpeed > 1.5) {
+      if (this.reverseHold > 0.35) this.reversing = true;
+
+      if (input.throttle > 0) {
+        if (this.forwardSpeed < -1) {
+          // Acelerar yendo hacia atrás: primero frenar.
+          brake = s.brakeForce * input.throttle;
+        } else {
+          // Curva de par: plena hasta 75% de la punta y cae a 0 en la velocidad máxima.
+          const r = this.forwardSpeed / maxMs;
+          const curve = r < 0.75 ? 1 : Math.max(0, 1 - (r - 0.75) / 0.25);
+          engine = s.engineForce * input.throttle * curve;
+        }
+      }
+      if (input.brake > 0 && input.throttle === 0) {
+        if (this.reversing) {
+          if (this.forwardSpeed > -30 / KMH) engine = -s.engineForce * 0.5 * input.brake;
+        } else {
           brake = s.brakeForce * input.brake;
-        } else if (this.forwardSpeed > -30 / KMH) {
-          engine = -s.engineForce * 0.5 * input.brake;
         }
       }
       if (input.throttle === 0 && input.brake === 0) brake = 4; // freno motor

@@ -305,7 +305,8 @@ export class GameEngine {
     const susp = [0, 1, 2, 3].map((i) => v.wheelState(i).suspension);
     const spin = v.wheelState(0).rotation;
     poseWheels(this.car.wheels, this.car.dim, { steer: v.steer, spin, suspension: susp });
-    if (this.car.tailMat) this.car.tailMat.emissiveIntensity = input.brake > 0 && v.forwardSpeed > 0.5 ? 3.5 : 0.6;
+    if (this.car.reverseMat) this.car.reverseMat.emissiveIntensity = v.reversing ? 2.5 : 0;
+    if (this.car.tailMat) this.car.tailMat.emissiveIntensity = (input.brake > 0 && !v.reversing) || (input.throttle > 0 && v.forwardSpeed < -1) ? 3.5 : 0.6;
 
     this.emitParticles(dt);
     this.particles.update(dt);
@@ -417,7 +418,7 @@ export class GameEngine {
     this.opts.onHud({
       speedKmh: v.speedKmh,
       rpm: AudioManager.rpmFor(v.speedKmh),
-      gear: v.forwardSpeed < -0.5 ? 'R' : v.speedKmh < 1 ? 'N' : AudioManager.gearFor(v.speedKmh),
+      gear: v.reversing || v.forwardSpeed < -0.5 ? 'R' : v.speedKmh < 1 ? 'N' : AudioManager.gearFor(v.speedKmh),
       raceMs: Number.isFinite(raceMs) ? raceMs : null,
       lap: Math.min(cp.lap + 1, this.trackDef.laps),
       laps: this.trackDef.laps,
