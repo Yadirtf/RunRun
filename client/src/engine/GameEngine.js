@@ -188,7 +188,7 @@ export class GameEngine {
     const loop = (now) => {
       if (!this.running) return;
       this.raf = requestAnimationFrame(loop);
-      const dt = Math.min(0.1, (now - this.lastFrame) / 1000);
+      const dt = Math.max(0, Math.min(0.1, (now - this.lastFrame) / 1000));
       this.lastFrame = now;
       this.frame(dt, now);
     };

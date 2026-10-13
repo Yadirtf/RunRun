@@ -12,18 +12,25 @@ export function useSocket() {
 
   useEffect(() => {
     const s = useGameStore.getState;
+    let rejoining = false;
     const offs = [
       client.on('connect', () => {
         s().setConnection('connected', client.id);
         // Tras una reconexión el servidor nos ve como jugador nuevo: volver a la sala si seguía en espera.
         const { room, nickname, carModel, color } = s();
-        if (room && room.status === 'LOBBY') client.joinRoom(room.code, nickname, carModel, color);
+        if (room && room.status === 'LOBBY') {
+          rejoining = true;
+          client.joinRoom(room.code, nickname, carModel, color);
+        }
         else if (room) s().leaveRoom();
       }),
       client.on('disconnect', () => s().setConnection('disconnected', null)),
       client.on('connect_error', () => s().setConnection('disconnected', null)),
       client.on(EVENTS.ROOM_CREATED, ({ room }) => s().setRoom(room)),
-      client.on(EVENTS.ROOM_JOINED, ({ room }) => s().setRoom(room)),
+      client.on(EVENTS.ROOM_JOINED, ({ room }) => {
+        rejoining = false;
+        s().setRoom(room);
+      }),
       client.on(EVENTS.ROOM_STATE, (room) => s().setRoom(room)),
       client.on(EVENTS.RACE_LOADING, (race) => s().startLoading(race)),
       client.on(EVENTS.RACE_STARTED, ({ startTime }) => s().setStartTime(startTime)),
@@ -32,7 +39,16 @@ export function useSocket() {
       client.on(EVENTS.HOST_TRANSFER, ({ newHostId }) => {
         if (newHostId === client.id) s().showToast('Ahora eres el anfitrión de la sala', 'info');
       }),
-      client.on(EVENTS.ERROR_MESSAGE, (msg) => s().showToast(msg)),
+      client.on(EVENTS.ERROR_MESSAGE, (msg) => {
+        // Si la sala desapareció mientras estábamos desconectados, volver al inicio.
+        if (rejoining) {
+          rejoining = false;
+          s().leaveRoom();
+          s().showToast('Se perdió la conexión y la sala se cerró.');
+          return;
+        }
+        s().showToast(msg);
+      }),
     ];
     if (client.socket.connected) s().setConnection('connected', client.id);
     return () => offs.forEach((off) => off());
