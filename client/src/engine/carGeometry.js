@@ -7,7 +7,7 @@ export function carDimensions(def) {
     height,
     wheelBase: length * 0.62,
     halfTrack: width * 0.43,
-    wheelRadius: 0.36,
+    wheelRadius: def.body.wheelRadius ?? 0.36,
     suspensionRest: 0.32,
     connectionY: -0.05,
     /** Altura del suelo respecto al origen del chasis con el coche en reposo. */

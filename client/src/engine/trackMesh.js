@@ -82,6 +82,9 @@ export function buildTrackMesh(path) {
     runoffRight: strip(path, edge, outer, 0.06, 0.1, 6),
     wallLeft: wall(path, -outer, wallHeight, 0.05),
     wallRight: wall(path, outer, wallHeight, 0.05),
+    // Muros físicos más altos que los visibles: un coche nunca puede saltarlos.
+    wallLeftCollider: wall(path, -outer, 4, 0.05),
+    wallRightCollider: wall(path, outer, 4, 0.05),
     halfWidth: w,
     outerOffset: outer,
   };

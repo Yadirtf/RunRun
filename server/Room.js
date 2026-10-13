@@ -30,7 +30,14 @@ export class Room {
     return this.players.size;
   }
 
-  addPlayer(id, { nickname, carModel }) {
+  /** Color preferido si es de la paleta y está libre; si no, el primero libre. */
+  pickColor(preferred, exceptId) {
+    const taken = new Set([...this.players.values()].filter((p) => p.id !== exceptId).map((p) => p.color));
+    if (PLAYER_COLORS.includes(preferred) && !taken.has(preferred)) return preferred;
+    return PLAYER_COLORS.find((c) => !taken.has(c)) ?? PLAYER_COLORS[0];
+  }
+
+  addPlayer(id, { nickname, carModel, color }) {
     if (this.players.size >= MAX_PLAYERS) return { error: `La sala está llena (máx. ${MAX_PLAYERS} jugadores).` };
     if (this.status !== ROOM_STATUS.LOBBY) return { error: 'La carrera ya empezó. Espera a que termine.' };
     const usedSlots = new Set([...this.players.values()].map((p) => p.slot));
@@ -40,7 +47,7 @@ export class Room {
       id,
       nickname,
       carModel: CARS[carModel] ? carModel : getCar().id,
-      color: PLAYER_COLORS[slot % PLAYER_COLORS.length],
+      color: this.pickColor(color),
       slot,
       isHost: this.players.size === 0,
       ready: false,
@@ -76,10 +83,12 @@ export class Room {
     return true;
   }
 
-  selectCar(id, carModel) {
+  selectCar(id, carModel, color) {
     const p = this.players.get(id);
     if (!p || this.status !== ROOM_STATUS.LOBBY || !CARS[carModel]) return false;
     p.carModel = carModel;
+    // Solo cambia si el color pedido está libre; si no, conserva el actual.
+    if (color && this.pickColor(color, id) === color) p.color = color;
     this.touch();
     return true;
   }

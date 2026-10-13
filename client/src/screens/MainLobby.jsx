@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { NICKNAME_MIN, NICKNAME_MAX, normalizeRoomCode, sanitizeNickname } from '@runrun/shared/protocol';
-import { getCar } from '@runrun/shared/cars';
 import { useGameStore } from '../store/gameStore.js';
-import { CarShowroom, CarPicker } from '../components/CarSelector.jsx';
+import { CarShowroom, GarageCard } from '../components/CarSelector.jsx';
+import { TRACK_IDS, TRACKS } from '@runrun/shared/tracks';
 
 function inviteCodeFromUrl() {
   return normalizeRoomCode(new URLSearchParams(window.location.search).get('room'));
@@ -14,6 +14,8 @@ export function MainLobby({ client }) {
   const setNickname = useGameStore((s) => s.setNickname);
   const carModel = useGameStore((s) => s.carModel);
   const setCarModel = useGameStore((s) => s.setCarModel);
+  const color = useGameStore((s) => s.color);
+  const setColor = useGameStore((s) => s.setColor);
   const connection = useGameStore((s) => s.connection);
   const [invite] = useState(inviteCodeFromUrl);
   const [joinOpen, setJoinOpen] = useState(Boolean(invite));
@@ -26,13 +28,13 @@ export function MainLobby({ client }) {
 
   const create = () => {
     setTouched(true);
-    if (validName && online) client.createRoom(validName, carModel);
+    if (validName && online) client.createRoom(validName, carModel, color);
   };
   const join = (e) => {
     e?.preventDefault();
     setTouched(true);
     const c = normalizeRoomCode(code);
-    if (validName && c && online) client.joinRoom(c, validName, carModel);
+    if (validName && c && online) client.joinRoom(c, validName, carModel, color);
   };
 
   useEffect(() => {
@@ -44,50 +46,87 @@ export function MainLobby({ client }) {
 
   return (
     <div className="screen main-lobby">
-      <CarShowroom carModel={carModel} color={getCar(carModel).defaultColor} />
       <div className="speedlines" aria-hidden="true">
         {Array.from({ length: 14 }, (_, i) => <i key={i} style={{ '--i': i }} />)}
       </div>
 
-      <header className="brand enter">
-        <h1>RUN<span>RUN</span></h1>
-        <p>Carreras 3D multijugador · crea una sala y comparte el código</p>
-      </header>
-
-      <section className="lobby-panel glass enter delay-1">
-        <label className="field">
-          <span>Tu nombre de piloto</span>
-          <input
-            value={nickname}
-            maxLength={NICKNAME_MAX}
-            placeholder="p. ej. Checo"
-            onChange={(e) => setNickname(e.target.value)}
-            onBlur={() => setTouched(true)}
-            onKeyDown={(e) => e.key === 'Enter' && create()}
-            autoFocus={!nickname}
-            aria-invalid={Boolean(nameError)}
-          />
-          <small className="field-error">{nameError}</small>
-        </label>
-
-        <CarPicker value={carModel} onChange={setCarModel} />
-
-        {invite && (
-          <div className="invite-banner">
-            Te invitaron a la sala <b>{invite}</b>
-          </div>
-        )}
-
-        <div className="actions">
-          <button type="button" className="btn primary" onClick={create} disabled={!online}>
-            Crear sala privada
-          </button>
-          <button type="button" className="btn ghost" onClick={() => setJoinOpen(true)} disabled={!online}>
-            Unirse con código
-          </button>
+      <nav className="topbar enter">
+        <div className="logo">RUN<span>RUN</span></div>
+        <div className="topbar-meta">
+          <span>{TRACK_IDS.length} circuitos</span>
+          <span>Hasta 8 pilotos</span>
+          <span>Online</span>
         </div>
-        <p className="hint">W A S D o flechas para conducir · Espacio freno de mano · R recolocar · C cámara</p>
-      </section>
+      </nav>
+
+      <div className="stage">
+        <CarShowroom carModel={carModel} color={color} shiftX={0.12} fill={0.4} />
+      </div>
+
+      <div className="home-grid">
+        <div className="home-left">
+          <header className="brand enter delay-1">
+            <span className="eyebrow accent">Racing multijugador online</span>
+            <h1>RUN<span>RUN</span></h1>
+            <p>Crea una sala privada, comparte el código y compite en tiempo real contra tus amigos.</p>
+          </header>
+
+          <section className="lobby-panel glass enter delay-2">
+            <label className="field">
+              <span>Nombre de piloto</span>
+              <input
+                value={nickname}
+                maxLength={NICKNAME_MAX}
+                placeholder="p. ej. Checo"
+                onChange={(e) => setNickname(e.target.value)}
+                onBlur={() => setTouched(true)}
+                onKeyDown={(e) => e.key === 'Enter' && create()}
+                autoFocus={!nickname && window.matchMedia('(pointer: fine)').matches}
+                aria-invalid={Boolean(nameError)}
+              />
+              <small className="field-error">{nameError}</small>
+            </label>
+
+            {invite && (
+              <div className="invite-banner">
+                Te invitaron a la sala <b>{invite}</b>
+              </div>
+            )}
+
+            <div className="actions">
+              <button type="button" className="btn primary" onClick={create} disabled={!online}>
+                Crear sala
+              </button>
+              <button type="button" className="btn ghost" onClick={() => setJoinOpen(true)} disabled={!online}>
+                Unirse con código
+              </button>
+            </div>
+            <div className="keys" aria-label="Controles">
+              <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> conducir</span>
+              <span><kbd>Espacio</kbd> freno de mano</span>
+              <span><kbd>R</kbd> recolocar</span>
+              <span><kbd>C</kbd> cámara</span>
+            </div>
+          </section>
+
+          <ul className="track-strip enter delay-3" aria-label="Circuitos">
+            {TRACK_IDS.map((id) => (
+              <li key={id} className={`theme-${TRACKS[id].theme}`}>
+                <strong>{TRACKS[id].name}</strong>
+                <span>{TRACKS[id].tagline}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <GarageCard
+          className="home-garage enter delay-2"
+          carModel={carModel}
+          onCarChange={setCarModel}
+          color={color}
+          onColorChange={setColor}
+        />
+      </div>
 
       {joinOpen && (
         <div className="modal-backdrop" onClick={() => setJoinOpen(false)}>

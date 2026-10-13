@@ -15,8 +15,8 @@ function arc(r, from, to) {
 
 const ticks = Array.from({ length: MAX / 20 + 1 }, (_, i) => i * 20);
 
-/** Velocímetro analógico SVG con aguja, arco de RPM y lectura digital. */
-export function Speedometer({ speed, rpm }) {
+/** Velocímetro analógico SVG con aguja, arco de RPM, marcha y lectura digital. */
+export function Speedometer({ speed, rpm, gear }) {
   const angle = START + (Math.min(speed, MAX) / MAX) * SWEEP;
   const rpmEnd = START + Math.max(0.001, Math.min(1, rpm)) * SWEEP;
   return (
@@ -37,9 +37,10 @@ export function Speedometer({ speed, rpm }) {
           );
         })}
         <g style={{ transform: `rotate(${angle}deg)`, transformOrigin: '100px 100px' }} className="needle">
-          <line x1="100" y1="100" x2="178" y2="100" />
+          <line x1="112" y1="100" x2="172" y2="100" />
         </g>
-        <circle cx="100" cy="100" r="7" className="hub" />
+        <circle cx="100" cy="100" r="22" className="gear-bg" />
+        <text x="100" y="101" className="gear">{gear ?? 'N'}</text>
       </svg>
       <div className="digital">
         <strong>{Math.round(speed)}</strong>

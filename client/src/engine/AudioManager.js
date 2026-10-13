@@ -81,6 +81,13 @@ export class AudioManager {
     return { src, filter, gain, volume };
   }
 
+  /** Marcha engranada (1..6) para una velocidad, con la misma tabla que el sonido. */
+  static gearFor(speedKmh) {
+    let g = 1;
+    while (speedKmh > GEARS[g] && g < GEARS.length - 1) g++;
+    return g;
+  }
+
   static rpmFor(speedKmh) {
     let g = 1;
     while (speedKmh > GEARS[g] && g < GEARS.length - 1) g++;

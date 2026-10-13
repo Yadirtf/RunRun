@@ -52,6 +52,10 @@ export class VehicleController {
       .setFriction(0.3)
       .setRestitution(0.1);
     this.collider = world.createCollider(colliderDesc, this.body);
+    this.inertiaY = inertia.y;
+    /** Intensidad de las asistencias (0 = simulación pura, 1 = por defecto). */
+    this.assist = 1;
+    this.lateralLimit = this.stats.grip * 10;
 
     this.vehicle = world.createVehicleController(this.body);
     // En rapier 0.12 el setter de eje frontal tiene este nombre.
@@ -85,6 +89,9 @@ export class VehicleController {
     this.slip = 0;
     this.flipTimer = 0;
     this.airTime = 0;
+    this.reverseHold = 0;
+    /** Marcha atrás engranada (freno mantenido con el coche parado). */
+    this.reversing = false;
     this.reset(spawn);
   }
 
@@ -96,6 +103,8 @@ export class VehicleController {
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.steer = 0;
     this.flipTimer = 0;
+    this.reverseHold = 0;
+    this.reversing = false;
   }
 
   /** Vector local del chasis rotado a mundo. */
@@ -132,11 +141,14 @@ export class VehicleController {
     this.speedKmh = Math.abs(this.forwardSpeed) * KMH;
     const maxMs = s.maxSpeedKmh / KMH;
 
-    // Dirección: menos ángulo a alta velocidad y retorno suave al centro.
-    const speedFactor = Math.min(1, speed / maxMs);
-    const maxSteer = s.steer * (1 - 0.68 * speedFactor);
+    // Dirección: el ángulo máximo se limita para que, a cualquier velocidad, girar
+    // a tope pida justo el giro que el agarre permite (sin subviraje "en seco").
+    const absV = Math.abs(this.forwardSpeed);
+    this.lateralLimit = s.grip * 10;
+    const gripSteer = Math.atan((this.lateralLimit * 1.8 * this.wheelBase) / Math.max(absV * absV, 1));
+    const maxSteer = Math.min(s.steer, gripSteer);
     const target = input.steer * maxSteer;
-    const rate = (input.steer === 0 ? 4.5 : 3.0) * dt;
+    const rate = (input.steer === 0 ? 7 : 5) * s.steer * dt;
     this.steer += Math.max(-rate, Math.min(rate, target - this.steer));
 
     let engine = 0;
@@ -144,17 +156,33 @@ export class VehicleController {
     if (locked) {
       brake = s.brakeForce;
     } else {
-      if (input.throttle > 0) {
-        // Curva de par: plena hasta 75% de la punta y cae a 0 en la velocidad máxima.
-        const r = this.forwardSpeed / maxMs;
-        const curve = r < 0.75 ? 1 : Math.max(0, 1 - (r - 0.75) / 0.25);
-        engine = s.engineForce * input.throttle * curve;
+      // Pedal de freno = reversa: con el coche detenido, mantenerlo pisado un
+      // instante engrana la marcha atrás; soltarlo o acelerar la desengrana.
+      const stopped = Math.abs(this.forwardSpeed) < 0.8;
+      if (input.brake > 0 && input.throttle === 0) {
+        if (stopped || this.reversing) this.reverseHold += dt;
+      } else {
+        this.reverseHold = 0;
+        this.reversing = false;
       }
-      if (input.brake > 0) {
-        if (this.forwardSpeed > 1.5) {
+      if (this.reverseHold > 0.35) this.reversing = true;
+
+      if (input.throttle > 0) {
+        if (this.forwardSpeed < -1) {
+          // Acelerar yendo hacia atrás: primero frenar.
+          brake = s.brakeForce * input.throttle;
+        } else {
+          // Curva de par: plena hasta 75% de la punta y cae a 0 en la velocidad máxima.
+          const r = this.forwardSpeed / maxMs;
+          const curve = r < 0.75 ? 1 : Math.max(0, 1 - (r - 0.75) / 0.25);
+          engine = s.engineForce * input.throttle * curve;
+        }
+      }
+      if (input.brake > 0 && input.throttle === 0) {
+        if (this.reversing) {
+          if (this.forwardSpeed > -30 / KMH) engine = -s.engineForce * 0.5 * input.brake;
+        } else {
           brake = s.brakeForce * input.brake;
-        } else if (this.forwardSpeed > -30 / KMH) {
-          engine = -s.engineForce * 0.5 * input.brake;
         }
       }
       if (input.throttle === 0 && input.brake === 0) brake = 4; // freno motor
@@ -179,6 +207,8 @@ export class VehicleController {
     this.body.addForce({ x: -vel.x * speed * drag, y: 0, z: -vel.z * speed * drag }, true);
 
     v.updateVehicle(dt);
+    this.applyAssists(dt, { vel, up, handbrake, locked });
+    this.stabilize(up);
 
     let contacts = 0;
     let side = 0;
@@ -195,6 +225,61 @@ export class VehicleController {
     // Vuelco: si el techo apunta a menos de 10° del horizonte durante 3 s, recolocar.
     this.flipTimer = up.y < Math.cos((80 * Math.PI) / 180) ? this.flipTimer + dt : 0;
     return this.flipTimer > 3;
+  }
+
+  /**
+   * Asistencias de conducción (tipo ESC): llevan la velocidad de giro hacia la
+   * que pide el volante y absorben parte del deslizamiento lateral, de modo que
+   * el coche va hacia donde apunta. Con freno de mano se relajan para derrapar.
+   */
+  applyAssists(dt, { vel, up, handbrake, locked }) {
+    const v = this.vehicle;
+    let contacts = 0;
+    for (let i = 0; i < 4; i++) if (v.wheelIsInContact(i)) contacts++;
+    const vF = this.forwardSpeed;
+    // Solo con el coche apoyado y nivelado: nunca empujar un coche volcado o contra un muro.
+    if (locked || contacts < 3 || Math.abs(vF) < 2 || up.y < 0.85) return;
+    const w = this.body.angvel();
+    const yawRate = w.x * up.x + w.y * up.y + w.z * up.z;
+    const limit = this.lateralLimit / Math.abs(vF);
+    const kinematic = (vF * Math.tan(this.steer)) / this.wheelBase;
+    const desired = Math.max(-limit, Math.min(limit, kinematic));
+    const strength = (handbrake ? 0.8 : 7) * this.assist;
+    const torque = this.inertiaY * strength * (desired - yawRate);
+    this.body.addTorque({ x: up.x * torque, y: up.y * torque, z: up.z * torque }, true);
+
+    if (handbrake) return;
+    // Eje lateral horizontal: la corrección nunca tiene componente vertical.
+    const l = this.localToWorld({ x: 1, y: 0, z: 0 });
+    const ll = Math.hypot(l.x, l.z) || 1;
+    const lx = l.x / ll;
+    const lz = l.z / ll;
+    const vLat = vel.x * lx + vel.z * lz;
+    const dv = Math.max(-0.6, Math.min(0.6, vLat * (1 - Math.exp(-dt * 3.5 * this.assist))));
+    const k = this.stats.mass * dv;
+    this.body.applyImpulse({ x: -lx * k, y: 0, z: -lz * k }, true);
+  }
+
+  /**
+   * Anti-vuelco: un golpe contra el muro a gran velocidad no debe lanzar el
+   * coche por los aires. Se limita el giro de alabeo/cabeceo y el salto vertical.
+   */
+  stabilize(up) {
+    const w = this.body.angvel();
+    const yaw = w.x * up.x + w.y * up.y + w.z * up.z;
+    const rx = w.x - up.x * yaw;
+    const ry = w.y - up.y * yaw;
+    const rz = w.z - up.z * yaw;
+    const roll = Math.hypot(rx, ry, rz);
+    const maxRoll = 2.2;
+    const maxYaw = 4;
+    const yawC = Math.max(-maxYaw, Math.min(maxYaw, yaw));
+    const k = roll > maxRoll ? maxRoll / roll : 1;
+    if (k < 1 || yawC !== yaw) {
+      this.body.setAngvel({ x: rx * k + up.x * yawC, y: ry * k + up.y * yawC, z: rz * k + up.z * yawC }, true);
+    }
+    const lv = this.body.linvel();
+    if (lv.y > 5) this.body.setLinvel({ x: lv.x, y: 5, z: lv.z }, true);
   }
 
   get position() {

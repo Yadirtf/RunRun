@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import { DEFAULT_CAR_ID } from '@runrun/shared/cars';
+import { DEFAULT_CAR_ID, PLAYER_COLORS } from '@runrun/shared/cars';
 
 const NICK_KEY = 'runrun:nickname';
 const CAR_KEY = 'runrun:car';
+const COLOR_KEY = 'runrun:color';
 
 function load(key, fallback) {
   try {
@@ -29,6 +30,7 @@ export const useGameStore = create((set) => ({
   myId: null,
   nickname: load(NICK_KEY, ''),
   carModel: load(CAR_KEY, DEFAULT_CAR_ID),
+  color: load(COLOR_KEY, PLAYER_COLORS[0]),
   room: null,
   race: null,
   leaderboard: [],
@@ -44,6 +46,10 @@ export const useGameStore = create((set) => ({
   setCarModel: (carModel) => {
     save(CAR_KEY, carModel);
     set({ carModel });
+  },
+  setColor: (color) => {
+    save(COLOR_KEY, color);
+    set({ color });
   },
   setRoom: (room) => set({ room }),
   leaveRoom: () => set({ room: null, race: null, leaderboard: [], raceResults: null }),

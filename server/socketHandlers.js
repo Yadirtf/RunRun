@@ -53,7 +53,7 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
     socket.on(EVENTS.CREATE_ROOM, (payload = {}) => {
       const nickname = sanitizeNickname(payload.nickname);
       if (!nickname) return fail('El nombre debe tener entre 3 y 16 caracteres.');
-      const { room, player } = rooms.createRoom(socket.id, { nickname, carModel: payload.carModel });
+      const { room, player } = rooms.createRoom(socket.id, { nickname, carModel: payload.carModel, color: payload.color });
       socket.join(room.code);
       socket.emit(EVENTS.ROOM_CREATED, { roomCode: room.code, player, room: room.toJSON() });
       log.info?.(`[sala ${room.code}] creada por ${nickname}`);
@@ -65,7 +65,7 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       const code = normalizeRoomCode(payload.roomCode);
       if (!code) return fail('El código de sala no es válido.');
       const previous = myRoom();
-      const res = rooms.joinRoom(code, socket.id, { nickname, carModel: payload.carModel });
+      const res = rooms.joinRoom(code, socket.id, { nickname, carModel: payload.carModel, color: payload.color });
       if (res.error) return fail(res.error);
       if (previous && previous.code !== code) socket.leave(previous.code);
       socket.join(code);
@@ -79,9 +79,9 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       if (room?.setReady(socket.id, ready)) broadcastState(room);
     });
 
-    socket.on(EVENTS.SELECT_CAR, ({ carModel } = {}) => {
+    socket.on(EVENTS.SELECT_CAR, ({ carModel, color } = {}) => {
       const room = myRoom();
-      if (room?.selectCar(socket.id, carModel)) broadcastState(room);
+      if (room?.selectCar(socket.id, carModel, typeof color === 'string' ? color : undefined)) broadcastState(room);
     });
 
     socket.on(EVENTS.SELECT_TRACK, ({ trackId } = {}) => {
