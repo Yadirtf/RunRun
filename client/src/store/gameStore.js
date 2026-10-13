@@ -1,0 +1,66 @@
+import { create } from 'zustand';
+import { DEFAULT_CAR_ID } from '@runrun/shared/cars';
+
+const NICK_KEY = 'runrun:nickname';
+const CAR_KEY = 'runrun:car';
+
+function load(key, fallback) {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function save(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* modo privado: no persistir */
+  }
+}
+
+/**
+ * Estado global de la aplicación (Zustand). La fase de la UI se deriva del
+ * estado de la sala que manda el servidor (ver selectPhase).
+ */
+export const useGameStore = create((set) => ({
+  connection: 'connecting',
+  myId: null,
+  nickname: load(NICK_KEY, ''),
+  carModel: load(CAR_KEY, DEFAULT_CAR_ID),
+  room: null,
+  race: null,
+  leaderboard: [],
+  raceResults: null,
+  lapEvents: [],
+  toast: null,
+
+  setConnection: (connection, myId) => set({ connection, myId }),
+  setNickname: (nickname) => {
+    save(NICK_KEY, nickname);
+    set({ nickname });
+  },
+  setCarModel: (carModel) => {
+    save(CAR_KEY, carModel);
+    set({ carModel });
+  },
+  setRoom: (room) => set({ room }),
+  leaveRoom: () => set({ room: null, race: null, leaderboard: [], raceResults: null }),
+  startLoading: (race) => set({ race: { ...race, startTime: null }, leaderboard: [], raceResults: null }),
+  setStartTime: (startTime) => set((s) => ({ race: s.race ? { ...s.race, startTime } : s.race })),
+  setLeaderboard: (leaderboard) => set({ leaderboard }),
+  setResults: (raceResults) => set({ raceResults }),
+  showToast: (message, kind = 'error') => set({ toast: { message, kind, id: Date.now() } }),
+  clearToast: () => set({ toast: null }),
+}));
+
+/** LOBBY → WAITING_ROOM → RACE (carga, cuenta atrás, carrera y resultados). */
+export function selectPhase(s) {
+  if (!s.room) return 'LOBBY';
+  if (s.room.status === 'LOBBY') return 'WAITING_ROOM';
+  return 'RACE';
+}
+
+/** Telemetría del HUD (15 Hz) en un store aparte para no re-renderizar toda la app. */
+export const useHudStore = create(() => ({ hud: null, loading: { progress: 0, label: '' } }));

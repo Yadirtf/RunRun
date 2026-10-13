@@ -1,0 +1,12 @@
+{
+  "name": "@runrun/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./protocol": "./src/protocol.js",
+    "./tracks": "./src/tracks.js",
+    "./trackPath": "./src/trackPath.js",
+    "./cars": "./src/cars.js"
+  }
+}
