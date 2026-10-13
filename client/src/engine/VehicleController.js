@@ -7,6 +7,7 @@
  * Convención: el coche mira a +Z local, +Y arriba, +X a la izquierda.
  */
 import { carDimensions } from './carGeometry.js';
+import { carCircles, deepestOverlap, contactDeltaV } from './carContacts.js';
 
 const KMH = 3.6;
 
@@ -89,6 +90,7 @@ export class VehicleController {
     this.slip = 0;
     this.flipTimer = 0;
     this.airTime = 0;
+    this.contacts = 0;
     this.reverseHold = 0;
     /** Marcha atrás engranada (freno mantenido con el coche parado). */
     this.reversing = false;
@@ -167,7 +169,9 @@ export class VehicleController {
       }
       if (this.reverseHold > 0.35) this.reversing = true;
 
-      if (input.throttle > 0) {
+      // El freno manda sobre el acelerador si se pisan los dos.
+      const braking = input.brake > 0 && !this.reversing && this.forwardSpeed > 0.5;
+      if (input.throttle > 0 && !braking) {
         if (this.forwardSpeed < -1) {
           // Acelerar yendo hacia atrás: primero frenar.
           brake = s.brakeForce * input.throttle;
@@ -178,9 +182,9 @@ export class VehicleController {
           engine = s.engineForce * input.throttle * curve;
         }
       }
-      if (input.brake > 0 && input.throttle === 0) {
+      if (input.brake > 0) {
         if (this.reversing) {
-          if (this.forwardSpeed > -30 / KMH) engine = -s.engineForce * 0.5 * input.brake;
+          if (input.throttle === 0 && this.forwardSpeed > -30 / KMH) engine = -s.engineForce * 0.5 * input.brake;
         } else {
           brake = s.brakeForce * input.brake;
         }
@@ -216,6 +220,7 @@ export class VehicleController {
       if (v.wheelIsInContact(i)) contacts++;
       side += Math.abs(v.wheelSideImpulse(i) ?? 0);
     }
+    this.contacts = contacts;
     this.airTime = contacts === 0 ? this.airTime + dt : 0;
     const lateral = this.localToWorld({ x: 1, y: 0, z: 0 });
     const lateralSpeed = Math.abs(vel.x * lateral.x + vel.y * lateral.y + vel.z * lateral.z);
@@ -244,18 +249,20 @@ export class VehicleController {
     const limit = this.lateralLimit / Math.abs(vF);
     const kinematic = (vF * Math.tan(this.steer)) / this.wheelBase;
     const desired = Math.max(-limit, Math.min(limit, kinematic));
-    const strength = (handbrake ? 0.8 : 7) * this.assist;
+    // Con freno de mano la asistencia se relaja (derrape), pero el volante sigue
+    // mandando: girar mientras se frena con la palanca rota el coche.
+    const strength = (handbrake ? 3 : 7) * this.assist;
     const torque = this.inertiaY * strength * (desired - yawRate);
     this.body.addTorque({ x: up.x * torque, y: up.y * torque, z: up.z * torque }, true);
 
-    if (handbrake) return;
     // Eje lateral horizontal: la corrección nunca tiene componente vertical.
     const l = this.localToWorld({ x: 1, y: 0, z: 0 });
     const ll = Math.hypot(l.x, l.z) || 1;
     const lx = l.x / ll;
     const lz = l.z / ll;
     const vLat = vel.x * lx + vel.z * lz;
-    const dv = Math.max(-0.6, Math.min(0.6, vLat * (1 - Math.exp(-dt * 3.5 * this.assist))));
+    const rate = (handbrake ? 1.2 : 3.5) * this.assist;
+    const dv = Math.max(-0.6, Math.min(0.6, vLat * (1 - Math.exp(-dt * rate))));
     const k = this.stats.mass * dv;
     this.body.applyImpulse({ x: -lx * k, y: 0, z: -lz * k }, true);
   }
@@ -280,6 +287,41 @@ export class VehicleController {
     }
     const lv = this.body.linvel();
     if (lv.y > 5) this.body.setLinvel({ x: lv.x, y: 5, z: lv.z }, true);
+  }
+
+  /** Choque blando con los coches de otros jugadores (ver carContacts.js). */
+  collideWith(remotes) {
+    const p = this.body.translation();
+    const f = this.localToWorld({ x: 0, y: 0, z: 1 });
+    const mine = carCircles(this.def, p.x, p.z, f.x, f.z);
+    for (const r of remotes) {
+      if (!r.ready || Math.abs(r.position.y - p.y) > 2) continue;
+      const hit = deepestOverlap(mine, carCircles(r.carDef, r.position.x, r.position.z, r.forward.x, r.forward.z));
+      if (!hit) continue;
+      const v = this.body.linvel();
+      const dv = contactDeltaV(hit, v, r.velocity);
+      const m = this.stats.mass;
+      this.body.applyImpulse({ x: dv.x * m, y: 0, z: dv.z * m }, true);
+    }
+  }
+
+  /**
+   * Red de seguridad tras cada paso de físicas: limita velocidades imposibles
+   * y detecta estados rotos (NaN). Devuelve false si hay que recolocar.
+   */
+  sanitize() {
+    const t = this.body.translation();
+    const v = this.body.linvel();
+    const w = this.body.angvel();
+    if (![t.x, t.y, t.z, v.x, v.y, v.z, w.x, w.y, w.z].every(Number.isFinite)) return false;
+    const maxH = (this.stats.maxSpeedKmh / KMH) * 1.3;
+    const h = Math.hypot(v.x, v.z);
+    const k = h > maxH ? maxH / h : 1;
+    const vy = Math.max(-40, Math.min(8, v.y));
+    if (k < 1 || vy !== v.y) this.body.setLinvel({ x: v.x * k, y: vy, z: v.z * k }, true);
+    const wl = Math.hypot(w.x, w.y, w.z);
+    if (wl > 6) this.body.setAngvel({ x: (w.x * 6) / wl, y: (w.y * 6) / wl, z: (w.z * 6) / wl }, true);
+    return true;
   }
 
   get position() {

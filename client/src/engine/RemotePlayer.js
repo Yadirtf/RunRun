@@ -7,16 +7,16 @@ const BUFFER_SIZE = 8;
 /**
  * Vehículo de otro jugador. Guarda las últimas instantáneas recibidas (20 Hz)
  * y dibuja el coche ~110 ms en el pasado interpolando entre las dos que rodean
- * ese instante: movimiento suave aunque lleguen paquetes con jitter. Un cuerpo
- * cinemático en el mundo local permite chocar con él.
+ * ese instante: movimiento suave aunque lleguen paquetes con jitter. No tiene
+ * cuerpo físico: el choque con el coche local lo resuelve carContacts.js con
+ * un empuje acotado (un sólido cinemático de masa infinita lanzaba los coches).
  */
 export class RemotePlayer {
-  constructor({ id, nickname, color, carDef, scene, RAPIER, world }) {
+  constructor({ id, nickname, color, carDef, scene }) {
     this.id = id;
     this.nickname = nickname;
     this.carDef = carDef;
     this.scene = scene;
-    this.world = world;
     this.buffer = [];
     this.position = new THREE.Vector3(0, -100, 0);
     this.quaternion = new THREE.Quaternion();
@@ -24,10 +24,9 @@ export class RemotePlayer {
     this.spin = 0;
     this.steer = 0;
     this.ready = false;
-
-    const { length, width } = carDef.body;
-    this.body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, -100, 0));
-    world.createCollider(RAPIER.ColliderDesc.cuboid(width / 2, 0.45, length / 2).setTranslation(0, 0.05, 0), this.body);
+    /** Velocidad estimada a partir de las instantáneas (m/s), para los choques. */
+    this.velocity = new THREE.Vector3();
+    this.forward = new THREE.Vector3(0, 0, 1);
 
     this.label = makeLabel(nickname, color);
     createCar(carDef, color).then((car) => {
@@ -74,8 +73,12 @@ export class RemotePlayer {
     this.steer = a.steer + (c.steer - a.steer) * Math.min(k, 1);
     this.spin = a.wheelRotation + (c.wheelRotation - a.wheelRotation) * Math.min(k, 1);
 
-    this.body.setNextKinematicTranslation(this.position);
-    this.body.setNextKinematicRotation(this.quaternion);
+    if (span > 0) {
+      const s = 1000 / span;
+      this.velocity.set((c.position.x - a.position.x) * s, (c.position.y - a.position.y) * s, (c.position.z - a.position.z) * s);
+    }
+    this.forward.set(0, 0, 1).applyQuaternion(this.quaternion);
+    this.ready = true;
 
     if (this.car) {
       this.car.root.visible = true;
@@ -90,7 +93,6 @@ export class RemotePlayer {
     if (this.car) disposeCar(this.car);
     this.label.material.map.dispose();
     this.label.material.dispose();
-    this.world.removeRigidBody(this.body);
   }
 }
 

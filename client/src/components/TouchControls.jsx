@@ -10,17 +10,37 @@ import { isTouchDevice } from '../lib/landscape.js';
  */
 export function TouchControls({ engineRef }) {
   const [touch, setTouch] = useState(isTouchDevice);
+  const rootRef = useRef(null);
   useEffect(() => {
     const mq = window.matchMedia('(pointer: coarse)');
     const on = (e) => setTouch(e.matches);
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, []);
+
+  // iOS interpreta dos dedos como gesto de zoom y cancela los toques en curso:
+  // por eso pisar el freno soltaba el volante. Bloquear los gestos nativos aquí.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return undefined;
+    const block = (e) => e.cancelable && e.preventDefault();
+    const opts = { passive: false };
+    el.addEventListener('touchstart', block, opts);
+    el.addEventListener('touchmove', block, opts);
+    document.addEventListener('gesturestart', block, opts);
+    document.addEventListener('gesturechange', block, opts);
+    return () => {
+      el.removeEventListener('touchstart', block, opts);
+      el.removeEventListener('touchmove', block, opts);
+      document.removeEventListener('gesturestart', block, opts);
+      document.removeEventListener('gesturechange', block, opts);
+    };
+  }, [touch]);
   if (!touch) return null;
 
   const input = () => engineRef.current?.input;
   return (
-    <div className="touch-controls" onContextMenu={(e) => e.preventDefault()}>
+    <div ref={rootRef} className="touch-controls" onContextMenu={(e) => e.preventDefault()}>
       <SteerPad input={input} />
       <div className="touch-actions">
         <button type="button" className="touch-mini" onPointerDown={() => input()?.actions.add('reset')} aria-label="Recolocar coche">↺</button>
