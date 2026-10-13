@@ -72,6 +72,7 @@ export class GameEngine {
     this.lastLapTime = null;
     this.bestLapTime = null;
     this.finished = false;
+    this.stuckTimer = 0;
     this.lastLit = null;
     this.prev = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
     this.curr = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
@@ -148,8 +149,6 @@ export class GameEngine {
       color: p.color,
       carDef: getCar(p.carModel),
       scene: this.scene,
-      RAPIER,
-      world: this.world,
     }));
   }
 
@@ -224,15 +223,18 @@ export class GameEngine {
 
     let input = this.input.read(dt);
     if (this.finished) input = { throttle: 0, brake: 0.3, steer: 0, handbrake: false };
+    this.lastInput = input;
 
     this.accumulator += dt;
     let steps = 0;
     while (this.accumulator >= STEP && steps < 5) {
       for (const r of this.remotes.values()) r.update(now);
       const flipped = this.vehicle.update(STEP, input, locked);
+      this.vehicle.collideWith(this.remotes.values());
       this.world.step();
+      const broken = !this.vehicle.sanitize();
       this.snapshotState();
-      if (flipped) this.resetToTrack();
+      if (flipped || broken) this.resetToTrack();
       this.accumulator -= STEP;
       steps++;
     }
@@ -274,12 +276,19 @@ export class GameEngine {
     // Recolocar: tecla R, caída o salida muy lejos de la pista.
     this.resetCooldown = Math.max(0, this.resetCooldown - dt);
     const lost = p.y < proj.y - 8 || proj.distance > this.track.layout.outerOffset + 12;
-    if ((actions.includes('reset') && this.resetCooldown === 0) || lost) this.resetToTrack();
+    // Atascado: sin apoyo (en el aire o encallado) o acelerando sin moverse durante 3 s.
+    const v = this.vehicle;
+    const unsupported = v.contacts < 2 && Math.abs(v.body.linvel().y) < 2;
+    const pinned = !locked && !this.finished && this.lastInput?.throttle > 0 && v.speedKmh < 2;
+    this.stuckTimer = unsupported || pinned ? this.stuckTimer + dt : 0;
+    const stuck = this.stuckTimer > 3;
+    if ((actions.includes('reset') && this.resetCooldown === 0) || lost || stuck) this.resetToTrack();
   }
 
   resetToTrack() {
     if (!this.proj) return;
     this.resetCooldown = 1.5;
+    this.stuckTimer = 0;
     const idx = this.proj.index;
     const p = this.path.points[idx];
     const t = this.path.tangents[idx];

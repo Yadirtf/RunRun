@@ -8,9 +8,15 @@ export function isTouchDevice() {
   return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 }
 
+let pending = false;
+
 /** Debe llamarse desde un gesto del usuario (clic o toque). */
 export async function enterLandscape() {
-  if (!isTouchDevice()) return;
+  if (!isTouchDevice() || pending) return;
+  // Ya en pantalla completa y horizontal: no repetir (cada petición puede
+  // provocar un cambio de tamaño que cancela los toques en curso).
+  if (document.fullscreenElement && window.matchMedia('(orientation: landscape)').matches) return;
+  pending = true;
   try {
     if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
       await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
@@ -18,6 +24,8 @@ export async function enterLandscape() {
     await screen.orientation?.lock?.('landscape');
   } catch {
     /* sin soporte: queda la rotación por CSS */
+  } finally {
+    pending = false;
   }
 }
 

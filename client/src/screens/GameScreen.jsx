@@ -100,14 +100,23 @@ export function GameScreen({ client }) {
     leave();
   };
   const touch = isTouchDevice();
-  // Al salir de la pantalla de juego, devolver la orientación libre.
-  useEffect(() => exitLandscape, []);
+  // Durante la carrera en táctil: sin zoom del navegador (dos dedos = pedal + volante).
+  // Al salir, devolver la orientación libre y el zoom.
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    const original = meta?.getAttribute('content');
+    if (touch && meta) meta.setAttribute('content', `${original}, maximum-scale=1, user-scalable=no`);
+    return () => {
+      if (meta && original) meta.setAttribute('content', original);
+      exitLandscape();
+    };
+  }, [touch]);
 
   const showLoading = !ready || !race?.startTime;
   const total = hud?.standings.length ?? race?.players.length ?? 1;
 
   return (
-    <div className={`screen game-screen ${touch ? 'is-touch' : ''}`} onPointerDown={touch ? enterLandscape : undefined}>
+    <div className={`screen game-screen ${touch ? 'is-touch' : ''}`} onPointerDown={touch ? () => enterLandscape() : undefined}>
       <canvas ref={canvasRef} className="game-canvas" />
 
       {ready && hud && (
