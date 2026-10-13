@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NICKNAME_MIN, NICKNAME_MAX, normalizeRoomCode, sanitizeNickname } from '@runrun/shared/protocol';
 import { useGameStore } from '../store/gameStore.js';
 import { CarShowroom, GarageCard } from '../components/CarSelector.jsx';
+import { QualityPicker } from '../components/QualityPicker.jsx';
 import { TRACK_IDS, TRACKS } from '@runrun/shared/tracks';
 
 function inviteCodeFromUrl() {
@@ -107,6 +108,7 @@ export function MainLobby({ client }) {
               <span><kbd>R</kbd> recolocar</span>
               <span><kbd>C</kbd> cámara</span>
             </div>
+            <QualityPicker />
           </section>
 
           <ul className="track-strip enter delay-3" aria-label="Circuitos">

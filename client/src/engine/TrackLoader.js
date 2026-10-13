@@ -1,9 +1,21 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { buildTrackMesh, TRACK_LAYOUT } from './trackMesh.js';
+import { buildTrackMesh, TRACK_LAYOUT, wall } from './trackMesh.js';
 import { gridSlot } from '@runrun/shared/trackPath';
 import { MAX_PLAYERS } from '@runrun/shared/protocol';
-import { asphaltTextures, curbTextures, surfaceTextures, barrierTexture, checkerTexture } from './textures.js';
+import { asphaltTextures, curbTextures, surfaceTextures, barrierTexture, checkerTexture, bannerTexture, crowdTexture } from './textures.js';
+
+/**
+ * Los muros de buildTrackMesh tienen las dos caras sobre los mismos vértices
+ * (para el collider); en el render sus normales se anulan y dan NaN, que el
+ * bloom extiende a toda la imagen. Para dibujarlos se usa una sola cara con
+ * material de doble cara.
+ */
+function oneSided({ positions, uvs, indices }) {
+  const out = new Uint32Array(indices.length / 2);
+  for (let i = 0, k = 0; i < indices.length; i += 12, k += 6) out.set(indices.subarray(i, i + 6), k);
+  return { positions, uvs, indices: out };
+}
 
 /**
  * Construye la pista (visual + colliders de Rapier). Por defecto es procedural
@@ -92,8 +104,9 @@ export class TrackLoader {
     this.mesh(tm.curbRight, curb);
     this.mesh(tm.runoffLeft, runoff);
     this.mesh(tm.runoffRight, runoff);
-    this.mesh(tm.wallLeft, barrier, { cast: true });
-    this.mesh(tm.wallRight, barrier, { cast: true });
+    this.mesh(oneSided(tm.wallLeft), barrier, { cast: true });
+    this.mesh(oneSided(tm.wallRight), barrier, { cast: true });
+    this.buildRails(path, tm.outerOffset, theme);
 
     // Colliders: asfalto y pianos con agarre pleno, escapatoria con menos agarre.
     this.addCollider(tm.road.positions, tm.road.indices, 1.0);
@@ -121,6 +134,67 @@ export class TrackLoader {
     line.receiveShadow = true;
     this.group.add(line);
     this.disposables.push(lineGeo, lineMat);
+  }
+
+  /**
+   * Guardarraíl de doble onda sobre postes por la cara interior del muro y,
+   * en la ciudad, valla de protección alta. Solo visual: los colliders son los
+   * muros de buildTrackMesh.
+   */
+  buildRails(path, outer, theme) {
+    const steel = new THREE.MeshStandardMaterial({ color: '#b9bec4', metalness: 0.85, roughness: 0.32, side: THREE.DoubleSide });
+    this.disposables.push(steel);
+    const off = outer - 0.32;
+    for (const side of [-1, 1]) {
+      for (const y of [0.62, 0.92]) {
+        const g = this.geometry(oneSided(wall(path, side * off, 0.2, y, 0)));
+        const m = new THREE.Mesh(g, steel);
+        m.castShadow = true;
+        m.receiveShadow = true;
+        this.group.add(m);
+      }
+    }
+    const postGeo = new THREE.BoxGeometry(0.12, 1.15, 0.12);
+    postGeo.translate(0, 0.55, 0);
+    this.disposables.push(postGeo);
+    const every = Math.max(1, Math.round(4 / path.step));
+    const n = Math.ceil(path.count / every) * 2;
+    const posts = new THREE.InstancedMesh(postGeo, steel, n);
+    const mtx = new THREE.Matrix4();
+    let k = 0;
+    for (let i = 0; i < path.count; i += every) {
+      for (const side of [-1, 1]) {
+        const p = path.points[i];
+        const r = path.rights[i];
+        mtx.makeTranslation(p[0] + r[0] * side * (off + 0.12), p[1], p[2] + r[2] * side * (off + 0.12));
+        posts.setMatrixAt(k++, mtx);
+      }
+    }
+    posts.count = k;
+    posts.castShadow = true;
+    this.group.add(posts);
+
+    if (theme.barrier === 'city') {
+      // Valla metálica de malla sobre el muro (alpha recortada).
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const g = c.getContext('2d');
+      g.strokeStyle = '#c8ccd2';
+      g.lineWidth = 2;
+      for (let i = -64; i < 128; i += 12) {
+        g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 64, 64); g.stroke();
+        g.beginPath(); g.moveTo(i + 64, 0); g.lineTo(i, 64); g.stroke();
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(1, 3);
+      const fenceMat = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.4, metalness: 0.6, roughness: 0.5, side: THREE.DoubleSide });
+      this.disposables.push(tex, fenceMat);
+      for (const side of [-1, 1]) {
+        const fm = new THREE.Mesh(this.geometry(oneSided(wall(path, side * outer, 3, 1.15, 0))), fenceMat);
+        this.group.add(fm);
+      }
+    }
   }
 
   async loadGlb({ visual, collider }) {
@@ -256,7 +330,7 @@ export class TrackLoader {
       g.add(pillar);
     }
     const beamGeo = new THREE.BoxGeometry(span + 0.8, 1.6, 1.0);
-    const beamMat = new THREE.MeshStandardMaterial({ map: checkerTexture(), roughness: 0.5 });
+    const beamMat = new THREE.MeshStandardMaterial({ map: bannerTexture(), roughness: 0.45, metalness: 0.2, emissive: '#ffffff', emissiveMap: bannerTexture(), emissiveIntensity: 0.25 });
     const beam = new THREE.Mesh(beamGeo, beamMat);
     beam.position.set(0, 8.2, 0);
     beam.castShadow = true;
@@ -305,25 +379,11 @@ export class TrackLoader {
     const r = path.rights[centerIdx];
     const g = new THREE.Group();
 
-    const concrete = new THREE.MeshStandardMaterial({ color: theme.barrier === 'desert' ? '#cbb89c' : '#b9bcc2', roughness: 0.85 });
-    const crowdCanvas = document.createElement('canvas');
-    crowdCanvas.width = 512;
-    crowdCanvas.height = 32;
-    const ctx = crowdCanvas.getContext('2d');
-    ctx.fillStyle = '#3a3a40';
-    ctx.fillRect(0, 0, 512, 32);
-    const palette = ['#d62839', '#f4f4f4', '#2a9df4', '#f4a300', '#2bb673', '#222', '#9b5de5', '#e9c46a'];
-    for (let x = 0; x < 512; x += 4) {
-      ctx.fillStyle = palette[(Math.random() * palette.length) | 0];
-      ctx.fillRect(x + 1, 8 + Math.random() * 6, 3, 18);
-      ctx.fillStyle = '#e0b48c';
-      ctx.fillRect(x + 1, 4 + Math.random() * 4, 3, 4);
-    }
-    const crowdTex = new THREE.CanvasTexture(crowdCanvas);
-    crowdTex.colorSpace = THREE.SRGBColorSpace;
-    crowdTex.wrapS = THREE.RepeatWrapping;
+    const concrete = new THREE.MeshStandardMaterial({ color: theme.barrier === 'desert' ? '#cbb89c' : '#9da1a8', roughness: 0.85 });
+    const crowdTex = crowdTexture().clone();
+    crowdTex.needsUpdate = true;
     crowdTex.repeat.set(4, 1);
-    const crowd = new THREE.MeshStandardMaterial({ map: crowdTex, roughness: 0.9 });
+    const crowd = new THREE.MeshStandardMaterial({ map: crowdTex, roughness: 0.9, alphaTest: 0.5, side: THREE.DoubleSide });
 
     const rows = 9;
     for (let i = 0; i < rows; i++) {

@@ -149,6 +149,9 @@ export class Showroom {
     this.car = car;
     // El origen del modelo es el centro del chasis: apoyarlo en el suelo.
     car.root.position.y = -car.dim.visualOffsetY;
+    // El estudio ya tiene sombras reales: sin la sombra de contacto falsa.
+    const blob = car.root.getObjectByName('contactShadow');
+    if (blob) blob.visible = false;
     this.turntable.add(car.root);
     this.swap = 0;
   }

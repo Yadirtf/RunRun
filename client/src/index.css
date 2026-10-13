@@ -621,3 +621,24 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Selector de calidad gráfica */
+.quality-picker { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.quality-picker > span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: var(--color-muted); }
+.segmented { display: inline-flex; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 999px; padding: 3px; background: rgba(0, 0, 0, 0.25); }
+.segmented button { border: 0; background: transparent; color: var(--color-muted); font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.segmented button.on { background: var(--color-accent); color: #fff; }
+
+/* Temas de las pistas nuevas */
+.track-strip li.theme-coast { background: linear-gradient(135deg, rgba(20, 130, 150, 0.45), rgba(220, 190, 120, 0.25)); }
+.track-strip li.theme-autumn { background: linear-gradient(135deg, rgba(190, 80, 30, 0.45), rgba(120, 60, 20, 0.3)); }
+.track-strip li.theme-city { background: linear-gradient(135deg, rgba(150, 40, 160, 0.4), rgba(20, 30, 90, 0.45)); }
+.track-card.theme-coast { background: linear-gradient(135deg, rgba(20, 130, 150, 0.55), rgba(220, 190, 120, 0.35)); }
+.track-card.theme-autumn { background: linear-gradient(135deg, rgba(190, 80, 30, 0.55), rgba(120, 60, 20, 0.4)); }
+.track-card.theme-city { background: linear-gradient(135deg, rgba(150, 40, 160, 0.5), rgba(20, 30, 90, 0.55)); }
+.room-lobby.theme-coast { background: radial-gradient(900px 600px at 50% 62%, rgba(40, 170, 190, 0.18), transparent 65%), linear-gradient(180deg, #08121a, #07070b); }
+.room-lobby.theme-autumn { background: radial-gradient(900px 600px at 50% 62%, rgba(214, 110, 40, 0.2), transparent 65%), linear-gradient(180deg, #140c08, #07070b); }
+.room-lobby.theme-city { background: radial-gradient(900px 600px at 50% 62%, rgba(170, 60, 200, 0.2), transparent 65%), linear-gradient(180deg, #0c0a18, #07070b); }
+.loading-screen.theme-coast { background: radial-gradient(circle at 50% 40%, #12424a, #081014 70%); }
+.loading-screen.theme-autumn { background: radial-gradient(circle at 50% 40%, #4a2a14, #120a06 70%); }
+.loading-screen.theme-city { background: radial-gradient(circle at 50% 40%, #2a1640, #08060f 70%); }

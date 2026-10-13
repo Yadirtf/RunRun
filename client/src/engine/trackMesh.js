@@ -47,7 +47,7 @@ function strip(path, innerOffset, outerOffset, yInner = 0, yOuter = 0, uScale = 
  * Muro vertical como banda con dos caras. Se prolonga `skirt` metros bajo el
  * suelo para tapar cualquier desnivel entre pista y terreno.
  */
-function wall(path, offset, height, base, skirt = 3) {
+export function wall(path, offset, height, base, skirt = 3) {
   const { points, rights, count, step } = path;
   const positions = new Float32Array((count + 1) * 2 * 3);
   const uvs = new Float32Array((count + 1) * 2 * 2);

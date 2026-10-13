@@ -39,6 +39,7 @@ export function GameScreen({ client }) {
         trackId: race.trackId,
         myId,
         players: race.players,
+        quality: useGameStore.getState().quality,
         startTime: useGameStore.getState().race?.startTime ?? null,
         serverNow: client.serverNow,
         net: {

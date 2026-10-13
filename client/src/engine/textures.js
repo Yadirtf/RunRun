@@ -7,7 +7,7 @@ import * as THREE from 'three';
  */
 const cache = new Map();
 
-function rng(seed) {
+export function rng(seed) {
   let s = seed >>> 0;
   return () => {
     s = (s + 0x6d2b79f5) >>> 0;
@@ -43,7 +43,7 @@ function valueNoise(size, cells, rand) {
   return out;
 }
 
-function fbm(size, seed, octaves = 5, base = 4) {
+export function fbm(size, seed, octaves = 5, base = 4) {
   const rand = rng(seed);
   const out = new Float32Array(size * size);
   let amp = 1;
@@ -58,13 +58,14 @@ function fbm(size, seed, octaves = 5, base = 4) {
   return out;
 }
 
-function makeCanvas(size) {
+export function makeCanvas(size, height = size) {
   const c = document.createElement('canvas');
-  c.width = c.height = size;
+  c.width = size;
+  c.height = height;
   return c;
 }
 
-function toTexture(canvas, { srgb = true, repeat = [1, 1] } = {}) {
+export function toTexture(canvas, { srgb = true, repeat = [1, 1] } = {}) {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(repeat[0], repeat[1]);
@@ -76,7 +77,7 @@ function toTexture(canvas, { srgb = true, repeat = [1, 1] } = {}) {
 }
 
 /** Mapa normal tileable a partir de un campo de alturas. */
-function normalFromHeight(height, size, strength) {
+export function normalFromHeight(height, size, strength) {
   const canvas = makeCanvas(size);
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(size, size);
@@ -112,7 +113,7 @@ function paintField(size, field, colorAt) {
   return { canvas, ctx };
 }
 
-function cached(key, build) {
+export function cached(key, build) {
   if (!cache.has(key)) cache.set(key, build());
   return cache.get(key);
 }
@@ -180,6 +181,13 @@ const SURFACES = {
   rock: { seed: 33, colors: [[96, 88, 82], [128, 118, 108], [160, 150, 140]], strength: 6 },
   redrock: { seed: 41, colors: [[132, 62, 38], [170, 92, 56], [204, 128, 82]], strength: 6 },
   snow: { seed: 51, colors: [[220, 226, 236], [236, 240, 246], [250, 252, 255]], strength: 1.2 },
+  meadow: { seed: 61, colors: [[72, 104, 44], [104, 138, 60], [140, 160, 84]], strength: 3 },
+  leaves: { seed: 71, colors: [[96, 52, 24], [150, 82, 32], [196, 128, 48]], strength: 4 },
+  forest: { seed: 75, colors: [[70, 74, 36], [104, 98, 46], [134, 112, 58]], strength: 3 },
+  beach: { seed: 81, colors: [[206, 184, 140], [226, 206, 162], [240, 226, 190]], strength: 2 },
+  dirt: { seed: 85, colors: [[92, 72, 52], [120, 96, 70], [150, 124, 94]], strength: 4 },
+  concrete: { seed: 91, colors: [[96, 98, 102], [118, 120, 124], [140, 142, 146]], strength: 2 },
+  pavement: { seed: 95, colors: [[70, 72, 76], [86, 88, 92], [104, 106, 110]], strength: 1.6 },
 };
 
 function mix(a, b, t) {
@@ -233,23 +241,93 @@ export function strataTexture() {
   });
 }
 
-/** Banda de valla publicitaria/protección para los muros. */
+const BARRIER_COLORS = {
+  alpine: ['#c9ccd1', '#1b4f8c'],
+  desert: ['#d9d2c3', '#b5482a'],
+  coast: ['#e9eef2', '#0f7f8f'],
+  autumn: ['#cdc6b8', '#7a2e1b'],
+  city: ['#8f9399', '#1a1a22'],
+};
+
+/** Muro de hormigón con paneles publicitarios. */
 export function barrierTexture(theme) {
   return cached(`barrier:${theme}`, () => {
-    const canvas = makeCanvas(256);
+    const canvas = makeCanvas(512, 128);
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = theme === 'desert' ? '#d9d2c3' : '#c9ccd1';
-    ctx.fillRect(0, 0, 256, 64);
-    ctx.fillStyle = theme === 'desert' ? '#b5482a' : '#1b4f8c';
-    ctx.fillRect(0, 22, 256, 20);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 15px sans-serif';
-    ctx.fillText('RUNRUN', 18, 38);
-    ctx.fillText('RUNRUN', 146, 38);
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.fillRect(0, 60, 256, 4);
+    const [wallC, adC] = BARRIER_COLORS[theme] ?? BARRIER_COLORS.alpine;
+    ctx.fillStyle = wallC;
+    ctx.fillRect(0, 0, 512, 128);
+    const rand = rng(theme.length * 13);
+    for (let i = 0; i < 900; i++) {
+      ctx.fillStyle = `rgba(0,0,0,${rand() * 0.07})`;
+      ctx.fillRect(rand() * 512, rand() * 128, 2, 2);
+    }
+    const ads = [['RUNRUN', adC, '#ffffff'], ['TURBO OIL', '#111111', '#ffd200'], ['RACING', '#ffffff', '#d62839'], ['NITRO', adC, '#ffffff']];
+    ads.forEach(([text, bg, fg], i) => {
+      ctx.fillStyle = bg;
+      ctx.fillRect(i * 128 + 4, 30, 120, 56);
+      ctx.fillStyle = fg;
+      ctx.font = 'bold 26px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, i * 128 + 64, 59, 112);
+    });
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    for (let x = 0; x < 512; x += 128) ctx.fillRect(x, 0, 2, 128);
+    ctx.fillRect(0, 120, 512, 8);
     const tex = toTexture(canvas);
-    tex.repeat.set(1, 1);
+    tex.repeat.set(0.5, 1);
+    return tex;
+  });
+}
+
+/** Pancarta del pórtico de salida. */
+export function bannerTexture() {
+  return cached('banner', () => {
+    const canvas = makeCanvas(1024, 128);
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#0d0f14';
+    g.fillRect(0, 0, 1024, 128);
+    for (let x = 0; x < 1024; x += 32) {
+      for (let y = 0; y < 2; y++) {
+        g.fillStyle = (x / 32 + y) % 2 ? '#f2f2f2' : '#111';
+        g.fillRect(x, y * 16, 32, 16);
+        g.fillRect(x, 96 + y * 16, 32, 16);
+      }
+    }
+    g.fillStyle = '#d62839';
+    g.font = 'italic bold 56px Arial, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('RUNRUN  GRAND PRIX', 512, 66);
+    return toTexture(canvas);
+  });
+}
+
+/** Público de la tribuna: siluetas con camisetas de colores (alpha). */
+export function crowdTexture() {
+  return cached('crowd', () => {
+    const canvas = makeCanvas(512, 32);
+    const g = canvas.getContext('2d');
+    const rand = rng(57);
+    const shirts = ['#d62839', '#f4f4f4', '#2a9df4', '#f4a300', '#2bb673', '#222', '#9b5de5', '#e9c46a', '#1d3557'];
+    const skins = ['#e0b48c', '#c68e64', '#8d5a3b', '#f1c9a5'];
+    for (let x = 2; x < 510; x += 6 + rand() * 3) {
+      const h = rand() * 4;
+      g.fillStyle = shirts[(rand() * shirts.length) | 0];
+      g.beginPath();
+      g.ellipse(x + 2.5, 26 - h, 3.2, 8, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = skins[(rand() * skins.length) | 0];
+      g.beginPath();
+      g.arc(x + 2.5, 14 - h, 2.6, 0, Math.PI * 2);
+      g.fill();
+      if (rand() < 0.15) {
+        g.fillStyle = shirts[(rand() * shirts.length) | 0];
+        g.fillRect(x + 4, 2 - h, 1.5, 12);
+      }
+    }
+    const tex = toTexture(canvas);
     return tex;
   });
 }
@@ -266,6 +344,31 @@ export function softDotTexture() {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 64, 64);
     return toTexture(canvas, { srgb: false });
+  });
+}
+
+/** Nubes tileables: fbm con umbral según la cobertura (0 = despejado, 1 = cubierto). */
+export function cloudTexture(cover = 0.5) {
+  return cached(`clouds:${cover}`, () => {
+    const size = 512;
+    const field = fbm(size, 123, 6, 4);
+    const detail = fbm(size, 321, 4, 16);
+    const canvas = makeCanvas(size);
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(size, size);
+    const t0 = 0.62 - cover * 0.28;
+    for (let i = 0; i < size * size; i++) {
+      const v = field[i] * 0.8 + detail[i] * 0.2;
+      const a = Math.min(1, Math.max(0, (v - t0) / 0.18));
+      // Base algo más gris donde la nube es densa (sombra propia).
+      const shade = 255 - Math.min(1, Math.max(0, (v - t0 - 0.1) / 0.2)) * 55;
+      img.data[i * 4] = shade;
+      img.data[i * 4 + 1] = shade;
+      img.data[i * 4 + 2] = shade + 6;
+      img.data[i * 4 + 3] = a * a * (3 - 2 * a) * 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return toTexture(canvas);
   });
 }
 

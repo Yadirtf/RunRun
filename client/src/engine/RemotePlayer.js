@@ -12,7 +12,7 @@ const BUFFER_SIZE = 8;
  * un empuje acotado (un sólido cinemático de masa infinita lanzaba los coches).
  */
 export class RemotePlayer {
-  constructor({ id, nickname, color, carDef, scene }) {
+  constructor({ id, nickname, color, carDef, scene, detail }) {
     this.id = id;
     this.nickname = nickname;
     this.carDef = carDef;
@@ -29,7 +29,7 @@ export class RemotePlayer {
     this.forward = new THREE.Vector3(0, 0, 1);
 
     this.label = makeLabel(nickname, color);
-    createCar(carDef, color).then((car) => {
+    createCar(carDef, color, { detail: detail === 'high' ? 'low' : detail }).then((car) => {
       if (this.disposed) return disposeCar(car);
       this.car = car;
       car.root.add(this.label);
