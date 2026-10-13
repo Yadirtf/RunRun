@@ -276,11 +276,12 @@ export class GameEngine {
     // Recolocar: tecla R, caída o salida muy lejos de la pista.
     this.resetCooldown = Math.max(0, this.resetCooldown - dt);
     const lost = p.y < proj.y - 8 || proj.distance > this.track.layout.outerOffset + 12;
-    // Atascado: sin apoyo (en el aire o encallado) o acelerando sin moverse durante 3 s.
+    // Atascado: sin ruedas en el suelo o acelerando sin moverse durante 3 s. Igual
+    // que el vuelco, el contador se descarga despacio: los rebotes no lo reinician.
     const v = this.vehicle;
-    const unsupported = v.contacts < 2 && Math.abs(v.body.linvel().y) < 2;
+    const unsupported = v.contacts < 2;
     const pinned = !locked && !this.finished && this.lastInput?.throttle > 0 && v.speedKmh < 2;
-    this.stuckTimer = unsupported || pinned ? this.stuckTimer + dt : 0;
+    this.stuckTimer = unsupported || pinned ? this.stuckTimer + dt : Math.max(0, this.stuckTimer - dt * 0.5);
     const stuck = this.stuckTimer > 3;
     if ((actions.includes('reset') && this.resetCooldown === 0) || lost || stuck) this.resetToTrack();
   }
