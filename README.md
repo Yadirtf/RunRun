@@ -1,3 +1,82 @@
+# RunRun 🏎️
+
+Juego de carreras 3D multijugador en el navegador. Un jugador crea una sala, comparte el código (o el enlace `/?room=CODIGO`) y hasta 8 pilotos compiten en tiempo real en dos circuitos con paisajes distintos:
+
+| Pista | Paisaje | Longitud |
+| --- | --- | --- |
+| **Valle Alpino** | Curvas técnicas con desnivel, bosque de pinos, lago y cumbres nevadas | 1,29 km |
+| **Cañón del Desierto** | Rectas largas, horquilla y curvas rápidas entre dunas, cactus y mesetas rojas al atardecer | 1,45 km |
+
+## Cómo ejecutarlo
+
+Requisitos: Node.js 18 o superior.
+
+```bash
+npm install
+npm run dev        # servidor en :3001 y cliente Vite en :5173 (con proxy de WebSocket)
+```
+
+Abre http://localhost:5173 en dos pestañas: crea la sala en una y únete con el código en la otra.
+
+```bash
+npm test           # tests de dominio (salas, checkpoints, trazado) e integración Socket.io
+npm run build      # build de producción del cliente en client/dist
+npm start          # servidor de producción; si existe client/dist también lo sirve
+```
+
+**Controles:** W/↑ acelerar · S/↓ frenar y marcha atrás · A/D o ←/→ girar · Espacio freno de mano · R recolocar en pista · C cambiar cámara · M silenciar. También funciona con mando (gatillos y stick izquierdo) y en pantallas táctiles. `?quality=low` en la URL desactiva el bloom y reduce sombras para equipos modestos.
+
+## Arquitectura
+
+Monorepo con *npm workspaces* y capas separadas: el dominio no conoce Socket.io ni React, y el motor 3D no conoce la red.
+
+```
+shared/   Dominio compartido cliente/servidor (sin dependencias)
+  protocol.js     Contrato de eventos Socket.io, codificación binaria de transformaciones (40 bytes)
+  tracks.js       Catálogo de pistas (puntos de control, vueltas, checkpoints)
+  trackPath.js    Catmull-Rom centrípeta + re-muestreo por longitud de arco, proyección, parrilla
+  cars.js         Catálogo de coches (estadísticas y proporciones)
+
+server/   Node.js + Express + Socket.io
+  Room.js               Agregado "sala": jugadores, host, pista, estados LOBBY→LOADING→COUNTDOWN→RACING→FINISHED
+  RoomManager.js        Registro de salas, códigos legibles, limpieza de salas inactivas
+  CheckpointValidator.js  Orden de checkpoints, tiempo mínimo físico entre ellos y cronometraje con reloj del servidor
+  socketHandlers.js     Capa de transporte: valida entrada, llama al dominio y difunde eventos
+  server.js             Arranque HTTP/WS, CORS y servido opcional del build
+
+client/   Vite + React + Zustand
+  src/net/SocketClient.js   Adaptador Socket.io + sincronización de reloj con el servidor
+  src/store/gameStore.js    Estado global; la fase de la UI se deriva del estado de la sala
+  src/screens/              MainLobby → RoomLobby → GameScreen
+  src/components/           HUD (velocímetro, minimapa, tiempos, clasificación), selector de coche y pista, resultados
+  src/engine/               Motor de juego (Three.js + Rapier), independiente de React
+    GameEngine.js           Orquestador: paso fijo de físicas a 60 Hz con interpolación, red a 20 Hz, HUD a 15 Hz
+    VehicleController.js    Vehículo por raycast de Rapier: suspensión por rueda, curva de par, carga aerodinámica
+    TrackLoader.js          Pista procedural (o GLB si se configura) + colliders trimesh
+    environment/            Paisajes por tema: terreno, lago, vegetación instanciada, rocas
+    SceneSetup.js           Cielo físico, IBL, sombras que siguen al coche, niebla, bloom, ACES
+    CarFactory.js           Coches procedurales con nodos chassis/wheel_fl/... (sustituibles por GLB)
+    RemotePlayer.js         Buffer de instantáneas e interpolación ~110 ms en el pasado
+    CheckpointSystem.js, ChaseCamera.js, InputController.js, ParticleSystem.js, AudioManager.js
+```
+
+**Flujo de una carrera:** el host pulsa *Iniciar* → todos cargan la pista (`race_loading`) → cada cliente confirma (`player_loaded`) → el servidor fija la hora de salida (`race_started`) con 3 s de cuenta atrás, sincronizada con el reloj de cada cliente → los clientes envían su transformación a 20 Hz en binario y los checkpoints que cruzan → el servidor valida, publica vueltas y clasificación y cierra la carrera cuando todos terminan (o 60 s después del ganador, o a los 10 min).
+
+**Añadir una pista:** una entrada en `shared/src/tracks.js` (puntos de control) y, si quieres otro paisaje, un tema en `client/src/engine/environment/themes.js`. Los tests comprueban que el trazado no se cruza y que las curvas son conducibles.
+
+## Decisiones respecto a la especificación
+
+- Se siguió el stack del plan (Vite + React, Three.js 0.160, Rapier 0.12, Socket.io 4.7, Zustand). Para los menús se usó un *design system* con variables CSS (sección 4.1 del plan) en lugar de Tailwind, y no se incluyó Lenis porque ninguna pantalla tiene scroll.
+- No hay modelos de Sketchfab en el repositorio, así que pistas, paisajes y coches son procedurales (Fase 5 del plan). Se pueden sustituir por GLB sin tocar el motor: `CAR_GLB` en `CarFactory.js` y `assets.visual` / `assets.collider` en la definición de pista.
+- Se añadió una fase de carga sincronizada (`race_loading` / `player_loaded`) para que nadie empiece la cuenta atrás con la pista aún cargando, y la elección de pista y coche en la sala (`select_track`, `select_car`).
+- Las físicas usan el controlador de vehículo por raycast de Rapier (suspensión real por rueda) en vez de cilindros sin articulaciones.
+
+## Despliegue
+
+`render.yaml` define el backend (Web Service) y el frontend (Static Site) en Render. Variables: `CLIENT_ORIGIN` en el servidor y `VITE_SOCKET_URL` en el cliente (ver `server/.env.example` y `client/.env.example`). Alternativa de un solo servicio: `npm run build && npm start` sirve cliente y WebSocket desde el mismo origen.
+
+---
+
 # Especificación Técnica para Sistema de Carreras Multijugador 3D Web (*Production-Ready*)
 
 Esta es la documentación técnica y arquitectónica completa para que tu agente de desarrollo o equipo construya un juego de carreras multijugador 3D interactivo para navegador, listo para producción y optimizado para una alta tasa de refresco (60+ FPS).

@@ -1,23 +1,31 @@
-import { lazy, Suspense } from 'react';
-import { useGame } from './store/gameStore.js';
-import MenuScreen from './screens/MenuScreen.jsx';
-import LobbyScreen from './screens/LobbyScreen.jsx';
-import Toast from './ui/Toast.jsx';
+import { useEffect } from 'react';
+import { useSocket } from './hooks/useSocket.js';
+import { useGameState } from './hooks/useGameState.js';
+import { MainLobby } from './screens/MainLobby.jsx';
+import { RoomLobby } from './screens/RoomLobby.jsx';
+import { GameScreen } from './screens/GameScreen.jsx';
+import { Toast } from './components/Toast.jsx';
+import { ConnectionBadge } from './components/ConnectionBadge.jsx';
 
-// La carrera (física WebAssembly incluida) se descarga solo cuando hace falta.
-const RaceScreen = lazy(() => import('./screens/RaceScreen.jsx'));
-
+/** Enrutado por fase: la fase la decide el estado de la sala que manda el servidor. */
 export default function App() {
-  const screen = useGame((s) => s.screen);
+  const client = useSocket();
+  const { phase, room } = useGameState();
+
+  // Mantener ?room=CODIGO en la URL mientras estás en una sala (refrescar o compartir funciona).
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (room) url.searchParams.set('room', room.code);
+    else if (phase === 'LOBBY' && url.searchParams.has('room') && history.state?.joined) url.searchParams.delete('room');
+    window.history.replaceState({ joined: Boolean(room) }, '', url);
+  }, [room?.code, phase]);
+
   return (
     <>
-      {screen === 'menu' && <MenuScreen />}
-      {screen === 'lobby' && <LobbyScreen />}
-      {screen === 'race' && (
-        <Suspense fallback={<div className="screen race"><div className="overlay loading"><p className="muted">Preparando motor de físicas…</p></div></div>}>
-          <RaceScreen />
-        </Suspense>
-      )}
+      {phase === 'LOBBY' && <MainLobby client={client} />}
+      {phase === 'WAITING_ROOM' && <RoomLobby client={client} />}
+      {phase === 'RACE' && <GameScreen client={client} />}
+      {phase !== 'RACE' && <ConnectionBadge />}
       <Toast />
     </>
   );

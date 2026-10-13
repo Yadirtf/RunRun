@@ -1,8 +1,15 @@
-import { createRoot } from 'react-dom/client';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/orbitron/700.css';
+import '@fontsource/orbitron/900.css';
+import './index.css';
 import App from './App.jsx';
-import './styles.css';
 
-// Sin StrictMode: su doble montaje en desarrollo crearía dos motores 3D a la vez.
-createRoot(document.getElementById('root')).render(<App />);
-
-if (import.meta.env.DEV) import('./dev/testHarness.js');
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
