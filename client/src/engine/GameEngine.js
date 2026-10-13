@@ -17,16 +17,11 @@ import { CheckpointSystem } from './CheckpointSystem.js';
 import { ParticleSystem } from './ParticleSystem.js';
 import { AudioManager } from './AudioManager.js';
 import { disposeTextures } from './textures.js';
+import { qualityPreset } from './quality.js';
 
 const STEP = 1 / 60;
 const HUD_INTERVAL = 1 / 15;
 
-/** Calidad gráfica: ?quality=low|high en la URL, o baja en móviles. */
-function detectQuality() {
-  const q = new URLSearchParams(window.location.search).get('quality');
-  if (q === 'low' || q === 'high') return q;
-  return window.matchMedia?.('(pointer: coarse)').matches ? 'low' : 'high';
-}
 
 let rapierReady = null;
 function initRapier() {
@@ -94,7 +89,8 @@ export class GameEngine {
     this.world.timestep = STEP;
 
     await this.progress(0.15, 'Preparando cielo e iluminación');
-    this.setup = new SceneSetup(this.canvas, this.theme, { quality: this.opts.quality ?? detectQuality() });
+    this.quality = qualityPreset(this.opts.quality ?? 'auto');
+    this.setup = new SceneSetup(this.canvas, this.theme, { quality: this.quality });
     this.scene = this.setup.scene;
     this.camera = this.setup.camera;
 
@@ -104,8 +100,16 @@ export class GameEngine {
     await this.track.load(this.trackDef, this.path, this.theme);
 
     await this.progress(0.45, 'Esculpiendo el paisaje');
-    this.landscape = new Landscape(this.path, this.theme, { outerOffset: this.track.layout.outerOffset });
+    this.landscape = new Landscape(this.path, this.theme, {
+      outerOffset: this.track.layout.outerOffset,
+      quality: this.quality,
+      sunDir: this.setup.sunDir,
+    });
     this.scene.add(this.landscape.group);
+
+    await this.progress(0.65, 'Capturando reflejos del entorno');
+    const p0 = this.path.points[0];
+    this.setup.bakeSceneEnvironment(new THREE.Vector3(p0[0], p0[1], p0[2]));
 
     await this.progress(0.75, 'Preparando los coches');
     const players = this.opts.players;
@@ -113,8 +117,9 @@ export class GameEngine {
     const carDef = getCar(me?.carModel);
     this.spawn = gridSlot(this.path, me?.slot ?? 0);
     this.vehicle = new VehicleController(RAPIER, this.world, carDef, this.spawn);
-    this.car = await createCar(carDef, me?.color ?? carDef.defaultColor);
+    this.car = await createCar(carDef, me?.color ?? carDef.defaultColor, { detail: this.quality.carDetail });
     this.scene.add(this.car.root);
+    if (this.theme.headlights) this.addHeadlights(this.car);
     for (const p of players) if (p.id !== this.opts.myId) this.addRemote(p);
     this.snapshotState();
     this.snapshotState();
@@ -141,6 +146,16 @@ export class GameEngine {
     return this;
   }
 
+  /** Faros reales (focos) para las pistas nocturnas: solo el coche propio. */
+  addHeadlights(car) {
+    for (const side of [-1, 1]) {
+      const spot = new THREE.SpotLight('#fff1d6', 220, 90, 0.55, 0.5, 1.4);
+      spot.position.set(side * 0.6, -0.05, car.dim.length / 2 - 0.2);
+      spot.target.position.set(side * 1.2, -1.6, car.dim.length / 2 + 22);
+      car.root.add(spot, spot.target);
+    }
+  }
+
   addRemote(p) {
     if (this.remotes.has(p.id)) return;
     this.remotes.set(p.id, new RemotePlayer({
@@ -149,6 +164,7 @@ export class GameEngine {
       color: p.color,
       carDef: getCar(p.carModel),
       scene: this.scene,
+      detail: this.quality?.carDetail,
     }));
   }
 
@@ -327,7 +343,7 @@ export class GameEngine {
     } else {
       this.chase.update(dt, this.renderPos, this.renderQuat, v.speedKmh, v.steer);
     }
-    this.setup.follow(this.renderPos);
+    this.setup.follow(this.renderPos, this.time);
 
     const camFwd = this.camera.getWorldDirection(tmpV2);
     this.audio.update({
