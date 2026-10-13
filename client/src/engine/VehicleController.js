@@ -52,6 +52,10 @@ export class VehicleController {
       .setFriction(0.3)
       .setRestitution(0.1);
     this.collider = world.createCollider(colliderDesc, this.body);
+    this.inertiaY = inertia.y;
+    /** Intensidad de las asistencias (0 = simulación pura, 1 = por defecto). */
+    this.assist = 1;
+    this.lateralLimit = this.stats.grip * 10;
 
     this.vehicle = world.createVehicleController(this.body);
     // En rapier 0.12 el setter de eje frontal tiene este nombre.
@@ -132,11 +136,14 @@ export class VehicleController {
     this.speedKmh = Math.abs(this.forwardSpeed) * KMH;
     const maxMs = s.maxSpeedKmh / KMH;
 
-    // Dirección: menos ángulo a alta velocidad y retorno suave al centro.
-    const speedFactor = Math.min(1, speed / maxMs);
-    const maxSteer = s.steer * (1 - 0.68 * speedFactor);
+    // Dirección: el ángulo máximo se limita para que, a cualquier velocidad, girar
+    // a tope pida justo el giro que el agarre permite (sin subviraje "en seco").
+    const absV = Math.abs(this.forwardSpeed);
+    this.lateralLimit = s.grip * 10;
+    const gripSteer = Math.atan((this.lateralLimit * 1.8 * this.wheelBase) / Math.max(absV * absV, 1));
+    const maxSteer = Math.min(s.steer, gripSteer);
     const target = input.steer * maxSteer;
-    const rate = (input.steer === 0 ? 4.5 : 3.0) * dt;
+    const rate = (input.steer === 0 ? 7 : 5) * s.steer * dt;
     this.steer += Math.max(-rate, Math.min(rate, target - this.steer));
 
     let engine = 0;
@@ -179,6 +186,8 @@ export class VehicleController {
     this.body.addForce({ x: -vel.x * speed * drag, y: 0, z: -vel.z * speed * drag }, true);
 
     v.updateVehicle(dt);
+    this.applyAssists(dt, { vel, up, handbrake, locked });
+    this.stabilize(up);
 
     let contacts = 0;
     let side = 0;
@@ -195,6 +204,61 @@ export class VehicleController {
     // Vuelco: si el techo apunta a menos de 10° del horizonte durante 3 s, recolocar.
     this.flipTimer = up.y < Math.cos((80 * Math.PI) / 180) ? this.flipTimer + dt : 0;
     return this.flipTimer > 3;
+  }
+
+  /**
+   * Asistencias de conducción (tipo ESC): llevan la velocidad de giro hacia la
+   * que pide el volante y absorben parte del deslizamiento lateral, de modo que
+   * el coche va hacia donde apunta. Con freno de mano se relajan para derrapar.
+   */
+  applyAssists(dt, { vel, up, handbrake, locked }) {
+    const v = this.vehicle;
+    let contacts = 0;
+    for (let i = 0; i < 4; i++) if (v.wheelIsInContact(i)) contacts++;
+    const vF = this.forwardSpeed;
+    // Solo con el coche apoyado y nivelado: nunca empujar un coche volcado o contra un muro.
+    if (locked || contacts < 3 || Math.abs(vF) < 2 || up.y < 0.85) return;
+    const w = this.body.angvel();
+    const yawRate = w.x * up.x + w.y * up.y + w.z * up.z;
+    const limit = this.lateralLimit / Math.abs(vF);
+    const kinematic = (vF * Math.tan(this.steer)) / this.wheelBase;
+    const desired = Math.max(-limit, Math.min(limit, kinematic));
+    const strength = (handbrake ? 0.8 : 7) * this.assist;
+    const torque = this.inertiaY * strength * (desired - yawRate);
+    this.body.addTorque({ x: up.x * torque, y: up.y * torque, z: up.z * torque }, true);
+
+    if (handbrake) return;
+    // Eje lateral horizontal: la corrección nunca tiene componente vertical.
+    const l = this.localToWorld({ x: 1, y: 0, z: 0 });
+    const ll = Math.hypot(l.x, l.z) || 1;
+    const lx = l.x / ll;
+    const lz = l.z / ll;
+    const vLat = vel.x * lx + vel.z * lz;
+    const dv = Math.max(-0.6, Math.min(0.6, vLat * (1 - Math.exp(-dt * 3.5 * this.assist))));
+    const k = this.stats.mass * dv;
+    this.body.applyImpulse({ x: -lx * k, y: 0, z: -lz * k }, true);
+  }
+
+  /**
+   * Anti-vuelco: un golpe contra el muro a gran velocidad no debe lanzar el
+   * coche por los aires. Se limita el giro de alabeo/cabeceo y el salto vertical.
+   */
+  stabilize(up) {
+    const w = this.body.angvel();
+    const yaw = w.x * up.x + w.y * up.y + w.z * up.z;
+    const rx = w.x - up.x * yaw;
+    const ry = w.y - up.y * yaw;
+    const rz = w.z - up.z * yaw;
+    const roll = Math.hypot(rx, ry, rz);
+    const maxRoll = 2.2;
+    const maxYaw = 4;
+    const yawC = Math.max(-maxYaw, Math.min(maxYaw, yaw));
+    const k = roll > maxRoll ? maxRoll / roll : 1;
+    if (k < 1 || yawC !== yaw) {
+      this.body.setAngvel({ x: rx * k + up.x * yawC, y: ry * k + up.y * yawC, z: rz * k + up.z * yawC }, true);
+    }
+    const lv = this.body.linvel();
+    if (lv.y > 5) this.body.setLinvel({ x: lv.x, y: 5, z: lv.z }, true);
   }
 
   get position() {

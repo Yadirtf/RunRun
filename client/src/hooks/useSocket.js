@@ -16,8 +16,8 @@ export function useSocket() {
       client.on('connect', () => {
         s().setConnection('connected', client.id);
         // Tras una reconexión el servidor nos ve como jugador nuevo: volver a la sala si seguía en espera.
-        const { room, nickname, carModel } = s();
-        if (room && room.status === 'LOBBY') client.joinRoom(room.code, nickname, carModel);
+        const { room, nickname, carModel, color } = s();
+        if (room && room.status === 'LOBBY') client.joinRoom(room.code, nickname, carModel, color);
         else if (room) s().leaveRoom();
       }),
       client.on('disconnect', () => s().setConnection('disconnected', null)),

@@ -98,8 +98,8 @@ export class TrackLoader {
     this.addCollider(tm.curbRight.positions, tm.curbRight.indices, 0.9);
     this.addCollider(tm.runoffLeft.positions, tm.runoffLeft.indices, 0.6);
     this.addCollider(tm.runoffRight.positions, tm.runoffRight.indices, 0.6);
-    this.addCollider(tm.wallLeft.positions, tm.wallLeft.indices, 0.2);
-    this.addCollider(tm.wallRight.positions, tm.wallRight.indices, 0.2);
+    this.addCollider(tm.wallLeftCollider.positions, tm.wallLeftCollider.indices, 0.2);
+    this.addCollider(tm.wallRightCollider.positions, tm.wallRightCollider.indices, 0.2);
 
     // Línea de meta a cuadros.
     const p = path.points[0];

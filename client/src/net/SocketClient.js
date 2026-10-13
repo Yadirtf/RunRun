@@ -52,12 +52,12 @@ export class SocketClient {
 
   serverNow = () => Date.now() + this.clockOffset;
 
-  createRoom(nickname, carModel) {
-    this.socket.emit(EVENTS.CREATE_ROOM, { nickname, carModel });
+  createRoom(nickname, carModel, color) {
+    this.socket.emit(EVENTS.CREATE_ROOM, { nickname, carModel, color });
   }
 
-  joinRoom(roomCode, nickname, carModel) {
-    this.socket.emit(EVENTS.JOIN_ROOM, { roomCode, nickname, carModel });
+  joinRoom(roomCode, nickname, carModel, color) {
+    this.socket.emit(EVENTS.JOIN_ROOM, { roomCode, nickname, carModel, color });
   }
 
   leaveRoom() {
@@ -72,8 +72,8 @@ export class SocketClient {
     this.socket.emit(EVENTS.SELECT_TRACK, { trackId });
   }
 
-  selectCar(carModel) {
-    this.socket.emit(EVENTS.SELECT_CAR, { carModel });
+  selectCar(carModel, color) {
+    this.socket.emit(EVENTS.SELECT_CAR, { carModel, color });
   }
 
   startRace() {
