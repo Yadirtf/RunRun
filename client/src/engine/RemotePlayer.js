@@ -58,7 +58,10 @@ export class RemotePlayer {
       }
     }
     const span = c.t - a.t;
-    let k = span > 0 ? (renderTime - a.t) / span : 1;
+    // Un salto de más de 10 m entre instantáneas es un recolocado en pista: se
+    // dibuja ya en su nuevo sitio, sin deslizarlo ni contar ese salto como velocidad.
+    const jump = Math.hypot(c.position.x - a.position.x, c.position.y - a.position.y, c.position.z - a.position.z) > 10;
+    let k = span > 0 && !jump ? (renderTime - a.t) / span : 1;
     // Extrapolación corta si no llegan paquetes (máx. 1 intervalo).
     k = Math.max(0, Math.min(k, renderTime > c.t ? 1 + Math.min(1, (renderTime - c.t) / 50) * 0.5 : 1));
     const qa = tmpQ.set(a.rotation.x, a.rotation.y, a.rotation.z, a.rotation.w);
@@ -73,7 +76,9 @@ export class RemotePlayer {
     this.steer = a.steer + (c.steer - a.steer) * Math.min(k, 1);
     this.spin = a.wheelRotation + (c.wheelRotation - a.wheelRotation) * Math.min(k, 1);
 
-    if (span > 0) {
+    if (jump) {
+      this.velocity.set(0, 0, 0);
+    } else if (span > 0) {
       const s = 1000 / span;
       this.velocity.set((c.position.x - a.position.x) * s, (c.position.y - a.position.y) * s, (c.position.z - a.position.z) * s);
     }

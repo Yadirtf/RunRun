@@ -133,8 +133,12 @@ export class VehicleController {
   update(dt, input, locked = false) {
     const v = this.vehicle;
     const s = this.stats;
-    // addForce es persistente en Rapier: se limpia y se recalcula cada paso.
+    // addForce/addTorque son persistentes en Rapier: se limpian y se recalculan
+    // cada paso. Sin resetTorques el par del ESC se acumulaba carrera tras carrera
+    // y, al despegar el coche en un choque, quedaba aplicado: el coche giraba
+    // sin control sobre sí mismo, de pie sobre el morro o la cola.
     this.body.resetForces(true);
+    this.body.resetTorques(true);
     const vel = this.body.linvel();
     const fwd = this.localToWorld({ x: 0, y: 0, z: 1 });
     const up = this.localToWorld({ x: 0, y: 1, z: 0 });
@@ -227,9 +231,11 @@ export class VehicleController {
     this.slip = contacts > 0 ? Math.min(1, Math.max(0, (lateralSpeed - 2.5) / 8) + (handbrake && speed > 5 ? 0.4 : 0)) : 0;
     this.sideImpulse = side;
 
-    // Vuelco: si el techo apunta a menos de 10° del horizonte durante 3 s, recolocar.
-    this.flipTimer = up.y < Math.cos((80 * Math.PI) / 180) ? this.flipTimer + dt : 0;
-    return this.flipTimer > 3;
+    // Vuelco: inclinado más de 60° (de lado, boca abajo o de pie sobre el morro)
+    // durante 2.5 s, recolocar. El contador se descarga despacio en vez de
+    // ponerse a cero, para que un coche que se bambolea no lo reinicie sin fin.
+    this.flipTimer = up.y < 0.5 ? this.flipTimer + dt : Math.max(0, this.flipTimer - dt * 0.5);
+    return this.flipTimer > 2.5;
   }
 
   /**
