@@ -377,9 +377,10 @@ kbd {
 .tick { stroke: rgba(255, 255, 255, 0.75); stroke-width: 2; }
 .tick-label { fill: rgba(255, 255, 255, 0.75); font-size: 11px; text-anchor: middle; dominant-baseline: middle; font-family: var(--font-display); }
 .needle line { stroke: var(--color-accent); stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(230, 57, 70, 0.8)); }
-.hub { fill: #fff; }
-.digital { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); }
-.digital strong { display: block; font-size: 44px; font-weight: 900; color: #fff; line-height: 1; }
+.gear-bg { fill: rgba(10, 10, 15, 0.75); stroke: rgba(255, 255, 255, 0.25); stroke-width: 1.5; }
+.gear { fill: #fff; font-family: var(--font-display); font-weight: 900; font-size: 24px; text-anchor: middle; dominant-baseline: central; }
+.digital { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); }
+.digital strong { display: block; font-size: 38px; font-weight: 900; color: #fff; line-height: 1; }
 .digital span { font-size: 11px; letter-spacing: 0.2em; color: var(--color-neon); }
 
 .countdown { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
@@ -517,8 +518,9 @@ kbd {
   .minimap { width: 130px; height: 130px; }
   .leaderboard { top: 160px; width: 150px; }
   .speedometer { width: 160px; height: 160px; }
-  .digital strong { font-size: 32px; }
-  .digital { bottom: 22px; }
+  .digital strong { font-size: 28px; }
+  .digital { bottom: 0; }
+  .gear { font-size: 20px; }
   .lap-timer { min-width: 0; padding: 10px 12px; }
   .big { font-size: 28px; }
   .controls-hint { display: none; }

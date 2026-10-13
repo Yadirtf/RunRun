@@ -417,6 +417,7 @@ export class GameEngine {
     this.opts.onHud({
       speedKmh: v.speedKmh,
       rpm: AudioManager.rpmFor(v.speedKmh),
+      gear: v.forwardSpeed < -0.5 ? 'R' : v.speedKmh < 1 ? 'N' : AudioManager.gearFor(v.speedKmh),
       raceMs: Number.isFinite(raceMs) ? raceMs : null,
       lap: Math.min(cp.lap + 1, this.trackDef.laps),
       laps: this.trackDef.laps,

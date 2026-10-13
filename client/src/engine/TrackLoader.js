@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { buildTrackMesh } from './trackMesh.js';
+import { buildTrackMesh, TRACK_LAYOUT } from './trackMesh.js';
+import { gridSlot } from '@runrun/shared/trackPath';
+import { MAX_PLAYERS } from '@runrun/shared/protocol';
 import { asphaltTextures, curbTextures, surfaceTextures, barrierTexture, checkerTexture } from './textures.js';
 
 /**
@@ -29,6 +31,7 @@ export class TrackLoader {
     }
     this.buildGantry(path);
     this.buildGrandstand(path, theme);
+    if (!trackDef.assets?.visual) this.buildTrackDetails(path);
     this.scene.add(this.group);
     return this;
   }
@@ -136,6 +139,106 @@ export class TrackLoader {
       g.dispose();
     });
     this.layout = { outerOffset: 20, halfWidth: 7 };
+  }
+
+  /**
+   * Detalles de circuito profesional: cajones de parrilla pintados y carteles
+   * de frenada (150/100/50 m) antes de cada curva cerrada, por el exterior.
+   */
+  buildTrackDetails(path) {
+    const paint = new THREE.MeshStandardMaterial({ color: '#f2f2f2', roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -3 });
+    const lineGeo = new THREE.PlaneGeometry(1, 1);
+    lineGeo.rotateX(-Math.PI / 2);
+    this.disposables.push(paint, lineGeo);
+    const addLine = (pos, yaw, w, l, dx, dz) => {
+      const m = new THREE.Mesh(lineGeo, paint);
+      m.scale.set(w, 1, l);
+      const c = Math.cos(yaw);
+      const sn = Math.sin(yaw);
+      m.position.set(pos[0] + dx * c + dz * sn, pos[1] + 0.012, pos[2] - dx * sn + dz * c);
+      m.rotation.y = yaw;
+      m.receiveShadow = true;
+      this.group.add(m);
+    };
+    for (let slot = 0; slot < MAX_PLAYERS; slot++) {
+      const { position, yaw } = gridSlot(path, slot);
+      const pos = [position[0], position[1] - 1.2, position[2]];
+      // Cajón en "U" abierto hacia atrás: línea frontal y dos laterales cortas.
+      addLine(pos, yaw, 2.6, 0.18, 0, 2.6);
+      addLine(pos, yaw, 0.18, 1.4, 1.3, 1.9);
+      addLine(pos, yaw, 0.18, 1.4, -1.3, 1.9);
+    }
+
+    // Curvas: entradas donde el radio (curvatura suavizada ~30 m) baja de 60 m.
+    const { curvature, count, step } = path;
+    const W = 8;
+    const smooth = curvature.map((_, i) => {
+      let sum = 0;
+      for (let k = -W; k <= W; k++) sum += curvature[(i + k + count) % count];
+      return sum / (2 * W + 1);
+    });
+    const corners = [];
+    let inCorner = false;
+    for (let i = 0; i < count; i++) {
+      const radius = 1 / Math.max(Math.abs(smooth[i]), 1e-5);
+      if (!inCorner && radius < 60) {
+        corners.push(i);
+        inCorner = true;
+      } else if (inCorner && radius > 110) inCorner = false;
+    }
+    if (!corners.length) return;
+    const boardTex = {};
+    const boardGeo = new THREE.PlaneGeometry(2.1, 1.45);
+    const postGeo = new THREE.BoxGeometry(0.14, 1.6, 0.14);
+    const postMat = new THREE.MeshStandardMaterial({ color: '#30343b', metalness: 0.6, roughness: 0.4 });
+    this.disposables.push(boardGeo, postGeo, postMat);
+    const offset = path.width / 2 + TRACK_LAYOUT.curbWidth + 2.4;
+    corners.forEach((ci, n) => {
+      const outside = smooth[ci] > 0 ? -1 : 1;
+      const prev = corners[(n - 1 + corners.length) % corners.length];
+      const gap = corners.length > 1 ? (((ci - prev + count) % count) * step) : Infinity;
+      for (const d of [150, 100, 50]) {
+        if (d + 25 > gap) continue;
+        const idx = (ci - Math.round(d / step) + count) % count;
+        const p = path.points[idx];
+        const t = path.tangents[idx];
+        const r = path.rights[idx];
+        if (!boardTex[d]) {
+          const c = document.createElement('canvas');
+          c.width = 256;
+          c.height = 176;
+          const g = c.getContext('2d');
+          g.fillStyle = '#ffffff';
+          g.fillRect(0, 0, 256, 176);
+          g.fillStyle = '#d62839';
+          g.fillRect(0, 0, 256, 18);
+          g.fillRect(0, 158, 256, 18);
+          g.fillStyle = '#111';
+          g.font = 'bold 104px Arial, sans-serif';
+          g.textAlign = 'center';
+          g.textBaseline = 'middle';
+          g.fillText(String(d), 128, 92);
+          const tex = new THREE.CanvasTexture(c);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.anisotropy = 4;
+          boardTex[d] = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, side: THREE.DoubleSide });
+          this.disposables.push(tex, boardTex[d]);
+        }
+        const board = new THREE.Group();
+        board.name = 'brake-board';
+        const panel = new THREE.Mesh(boardGeo, boardTex[d]);
+        panel.position.y = 2.2;
+        panel.castShadow = true;
+        board.add(panel);
+        const post = new THREE.Mesh(postGeo, postMat);
+        post.position.y = 0.8;
+        board.add(post);
+        board.position.set(p[0] + r[0] * offset * outside, p[1], p[2] + r[2] * offset * outside);
+        // De cara a los coches que se acercan, ligeramente girado hacia la pista.
+        board.rotation.y = Math.atan2(-t[0], -t[2]) - outside * 0.25;
+        this.group.add(board);
+      }
+    });
   }
 
   /** Pórtico de salida con semáforo de 5 luces (se encienden en la cuenta atrás). */

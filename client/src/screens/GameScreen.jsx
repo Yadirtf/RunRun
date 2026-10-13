@@ -48,6 +48,7 @@ export function GameScreen({ client }) {
         onProgress: (p) => useHudStore.setState({ loading: p }),
       });
       engineRef.current = engine;
+      if (import.meta.env.DEV) window.__engine = engine;
       offs.push(client.onPlayerMoved((id, t) => engine.onRemoteTransform(id, t)));
       offs.push(client.on(EVENTS.PLAYER_LEFT, ({ id }) => engine.removePlayer(id)));
       offs.push(client.on(EVENTS.LAP_COMPLETED, (e) => engine.onLapCompleted(e)));
@@ -117,7 +118,7 @@ export function GameScreen({ client }) {
           />
           <Minimap trackId={race.trackId} standings={hud.standings} myId={myId} />
           {hud.standings.length > 1 && <Leaderboard standings={hud.standings} myId={myId} />}
-          <Speedometer speed={hud.speedKmh} rpm={hud.rpm} />
+          <Speedometer speed={hud.speedKmh} rpm={hud.rpm} gear={hud.gear} />
           <Countdown raceMs={hud.raceMs} />
           {hud.wrongWay && !hud.finished && <div className="banner warn">¡Sentido contrario!</div>}
           {hud.finished && !results && <div className="banner finish">¡Meta! Esperando al resto…</div>}

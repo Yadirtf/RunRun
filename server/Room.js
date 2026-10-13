@@ -87,7 +87,8 @@ export class Room {
     const p = this.players.get(id);
     if (!p || this.status !== ROOM_STATUS.LOBBY || !CARS[carModel]) return false;
     p.carModel = carModel;
-    if (color) p.color = this.pickColor(color, id);
+    // Solo cambia si el color pedido está libre; si no, conserva el actual.
+    if (color && this.pickColor(color, id) === color) p.color = color;
     this.touch();
     return true;
   }

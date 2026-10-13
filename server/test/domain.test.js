@@ -132,3 +132,21 @@ test('limpieza de salas inactivas', () => {
   assert.equal(rm.cleanup().length, 1);
   assert.equal(rm.roomOf('h'), null);
 });
+
+test('cada piloto elige pintura libre de la paleta', () => {
+  const rm = new RoomManager();
+  const { room, player: a } = rm.createRoom('a', { nickname: 'Ana', color: '#2a9df4' });
+  assert.equal(a.color, '#2a9df4');
+  // Color ocupado o fuera de la paleta: se asigna el primero libre.
+  const { player: b } = rm.joinRoom(room.code, 'b', { nickname: 'Beto', color: '#2a9df4' });
+  assert.notEqual(b.color, '#2a9df4');
+  const { player: c } = rm.joinRoom(room.code, 'c', { nickname: 'Caro', color: 'red' });
+  assert.ok(![a.color, b.color].includes(c.color));
+  // Cambiar de coche y color en el lobby; no se puede robar el de otro.
+  assert.ok(room.selectCar('b', 'gt3', '#2bb673'));
+  assert.equal(b.carModel, 'gt3');
+  assert.equal(b.color, '#2bb673');
+  const before = c.color;
+  room.selectCar('c', 'hatch', '#2bb673');
+  assert.equal(c.color, before);
+});
