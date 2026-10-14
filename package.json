@@ -13,5 +13,5 @@
     "start": "npm start -w server",
     "test": "node --test shared/test/*.test.js server/test/*.test.js"
   },
-  "engines": { "node": ">=18.0.0" }
+  "engines": { "node": ">=22.13.0" }
 }

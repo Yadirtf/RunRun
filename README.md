@@ -9,7 +9,7 @@ Juego de carreras 3D multijugador en el navegador. Un jugador crea una sala, com
 
 ## Cómo ejecutarlo
 
-Requisitos: Node.js 18 o superior.
+Requisitos: Node.js 22.13 o superior (la comunidad usa el SQLite integrado de Node).
 
 ```bash
 npm install
@@ -71,9 +71,25 @@ client/   Vite + React + Zustand
 - Se añadió una fase de carga sincronizada (`race_loading` / `player_loaded`) para que nadie empiece la cuenta atrás con la pista aún cargando, y la elección de pista y coche en la sala (`select_track`, `select_car`).
 - Las físicas usan el controlador de vehículo por raycast de Rapier (suspensión real por rueda) en vez de cilindros sin articulaciones.
 
+## Comunidad: amigos, invitaciones y notificaciones
+
+Botón **Amigos** (abajo a la derecha en los menús) con tres pestañas:
+
+- **Mis amigos:** invitaciones y solicitudes pendientes, y la lista de amigos con su estado (en línea, en una sala, corriendo, desconectado). Desde tu sala, **Invitar** les envía la invitación al instante; si un amigo está en una sala abierta y tú no, **Unirme** te lleva a ella.
+- **Agregar:** tu código de piloto (`ABCD-2345`) para compartir, un campo para agregar por código y, dentro de una sala, los pilotos que aún no son tus amigos con un botón **Agregar**.
+- **Ajustes:** activar las notificaciones del navegador y vincular la cuenta a otro dispositivo con un código de un solo uso (10 min).
+
+**Cuentas:** no hay registro. Cada navegador recibe una cuenta anónima (id + token en `localStorage`; en el servidor solo se guarda el hash del token). El nombre visible es el nombre de piloto. Para usar la misma cuenta en el móvil y el ordenador se vincula con el código de *Ajustes*.
+
+**Persistencia:** SQLite (`node:sqlite`) en `COMMUNITY_DB_PATH` (por defecto `server/data/runrun.db`): cuentas, amistades, solicitudes y suscripciones push. Las invitaciones y la presencia viven en memoria (caducan en 5 min).
+
+**Notificaciones push:** Web Push con VAPID y el service worker `client/public/sw.js`. Llegan aunque RunRun esté cerrado (invitación a sala, solicitud recibida o aceptada); si la pestaña está en primer plano se muestra el aviso dentro del juego en vez de la notificación del sistema. Al tocar una invitación se abre `/?room=CODIGO&invite=1` y entras directo si ya tienes nombre de piloto. En iPhone/iPad (iOS 16.4+) solo funcionan con RunRun añadido a la pantalla de inicio.
+
+Código: `shared/src/community.js` (contrato), `server/community/` (store SQLite, push y eventos `community:*`), `client/src/community/` (store, panel y lógica push).
+
 ## Despliegue
 
-`render.yaml` define el backend (Web Service) y el frontend (Static Site) en Render. Variables: `CLIENT_ORIGIN` en el servidor y `VITE_SOCKET_URL` en el cliente (ver `server/.env.example` y `client/.env.example`). Alternativa de un solo servicio: `npm run build && npm start` sirve cliente y WebSocket desde el mismo origen.
+`render.yaml` define el backend (Web Service) y el frontend (Static Site) en Render. Variables: `CLIENT_ORIGIN` en el servidor y `VITE_SOCKET_URL` en el cliente; para la comunidad, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` y `COMMUNITY_DB_PATH` en el servidor, que debe apuntar a un disco persistente o los amigos se pierden en cada despliegue (ver `server/.env.example` y `client/.env.example`). Alternativa de un solo servicio: `npm run build && npm start` sirve cliente y WebSocket desde el mismo origen.
 
 ---
 
