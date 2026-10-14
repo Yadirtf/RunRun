@@ -19,6 +19,9 @@ export class ChaseCamera {
     this.target = new THREE.Vector3();
     this.initialized = false;
     this.shake = 0;
+    /** Segundos de nitro: abre el FOV para dar sensación de empuje. */
+    this.boost = 0;
+    this.boostFov = 0;
   }
 
   cycle() {
@@ -70,7 +73,9 @@ export class ChaseCamera {
       this.shake = Math.max(0, this.shake - dt * 4);
     }
     this.camera.lookAt(this.target);
-    const fov = 62 + speedT * 14;
+    this.boost = Math.max(0, this.boost - dt);
+    this.boostFov += ((this.boost > 0 ? 10 : 0) - this.boostFov) * (1 - Math.exp(-dt * (this.boost > 0 ? 6 : 2)));
+    const fov = 62 + speedT * 14 + this.boostFov;
     if (Math.abs(this.camera.fov - fov) > 0.05) {
       this.camera.fov += (fov - this.camera.fov) * (1 - Math.exp(-dt * 3));
       this.camera.updateProjectionMatrix();

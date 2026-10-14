@@ -178,6 +178,84 @@ export class AudioManager {
     src.stop(t + 0.3);
   }
 
+  /**
+   * Efectos de los poderes, sintetizados. `distance` (m) atenúa los lejanos.
+   * @param {'pickup'|'cycle'|'fire'|'nitro'|'shield'|'block'|'explode'|'barge'|'warn'|'confirm'|'repair'} kind
+   */
+  sfx(kind, volume = 1, distance = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const v = volume * Math.min(1, 25 / Math.max(25, distance));
+    if (v < 0.03) return;
+    const tone = (type, f0, f1, dur, vol, at = 0) => {
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, t + at);
+      o.frequency.exponentialRampToValueAtTime(f1, t + at + dur);
+      g.gain.setValueAtTime(0.0001, t + at);
+      g.gain.exponentialRampToValueAtTime(vol * v, t + at + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + at + dur);
+      o.connect(g).connect(this.master);
+      o.start(t + at);
+      o.stop(t + at + dur + 0.02);
+    };
+    const noise = (filterType, f0, f1, dur, vol) => {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      const f = this.ctx.createBiquadFilter();
+      f.type = filterType;
+      f.frequency.setValueAtTime(f0, t);
+      f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(vol * v, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(f).connect(g).connect(this.master);
+      src.start(t, Math.random());
+      src.stop(t + dur + 0.02);
+    };
+    switch (kind) {
+      case 'pickup':
+        tone('triangle', 660, 990, 0.09, 0.25);
+        tone('triangle', 990, 1480, 0.12, 0.22, 0.07);
+        break;
+      case 'cycle':
+        tone('square', 520, 560, 0.05, 0.08);
+        break;
+      case 'confirm':
+        tone('triangle', 880, 1320, 0.1, 0.2);
+        break;
+      case 'fire':
+        noise('bandpass', 3000, 400, 0.35, 0.5);
+        tone('sawtooth', 300, 90, 0.3, 0.12);
+        break;
+      case 'nitro':
+        noise('bandpass', 400, 2600, 0.9, 0.45);
+        tone('sawtooth', 110, 220, 0.8, 0.1);
+        break;
+      case 'shield':
+      case 'repair':
+        tone('sine', 520, 1040, 0.4, 0.25);
+        tone('sine', 780, 1560, 0.45, 0.15, 0.05);
+        break;
+      case 'block':
+        tone('sine', 1400, 700, 0.25, 0.3);
+        break;
+      case 'warn':
+        tone('square', 950, 950, 0.08, 0.18);
+        tone('square', 950, 950, 0.08, 0.18, 0.14);
+        break;
+      case 'barge':
+        noise('lowpass', 900, 80, 0.6, 0.8);
+        tone('sine', 120, 40, 0.5, 0.5);
+        break;
+      case 'explode':
+      default:
+        noise('lowpass', 1600, 60, 0.9, 0.9);
+        tone('sine', 90, 30, 0.6, 0.6);
+    }
+  }
+
   toggleMute() {
     this.muted = !this.muted;
     if (this.master) this.master.gain.setTargetAtTime(this.muted ? 0 : 0.6, this.ctx.currentTime, 0.05);

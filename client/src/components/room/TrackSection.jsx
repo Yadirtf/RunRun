@@ -25,7 +25,7 @@ const INFO = Object.fromEntries(
  * animado) y la lista de circuitos. Solo el anfitrión cambia el de la sala; el
  * resto puede curiosear las fichas sin cambiar nada.
  */
-export function TrackSection({ trackId, isHost, onSelect }) {
+export function TrackSection({ trackId, isHost, onSelect, children }) {
   const [viewing, setViewing] = useState(trackId);
   useEffect(() => setViewing(trackId), [trackId]);
   const t = TRACKS[viewing] ?? TRACKS[trackId];
@@ -79,6 +79,7 @@ export function TrackSection({ trackId, isHost, onSelect }) {
             </button>
           );
         })}
+        {children && <div className="track-options">{children}</div>}
       </div>
     </section>
   );

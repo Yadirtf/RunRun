@@ -3,12 +3,16 @@ import { softDotTexture } from './textures.js';
 
 /**
  * Partículas en un único draw call (pool circular de puntos): humo de
- * neumático al derrapar y polvo/tierra al salirse de la pista.
+ * neumático al derrapar y polvo/tierra al salirse de la pista. Con
+ * `additive` sirve para chispas, estelas y explosiones luminosas (poderes).
  */
 const MAX = 1500;
 
 export class ParticleSystem {
-  constructor(scene) {
+  constructor(scene, { additive = false, growth = 2.2, rise = 0.25, opacity = 0.45 } = {}) {
+    this.growth = growth;
+    this.rise = rise;
+    this.opacity = opacity;
     this.positions = new Float32Array(MAX * 3).fill(-1e5);
     this.velocities = new Float32Array(MAX * 3);
     this.colors = new Float32Array(MAX * 3);
@@ -43,6 +47,7 @@ export class ParticleSystem {
         }`,
       transparent: true,
       depthWrite: false,
+      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     });
     this.points = new THREE.Points(geo, this.material);
     this.points.frustumCulled = false;
@@ -79,13 +84,13 @@ export class ParticleSystem {
       const t = 1 - this.life[i] / this.maxLife[i];
       const o = i * 3;
       this.velocities[o] *= 0.97;
-      this.velocities[o + 1] = this.velocities[o + 1] * 0.97 + 0.25 * dt;
+      this.velocities[o + 1] = this.velocities[o + 1] * 0.97 + this.rise * dt;
       this.velocities[o + 2] *= 0.97;
       this.positions[o] += this.velocities[o] * dt;
       this.positions[o + 1] += this.velocities[o + 1] * dt;
       this.positions[o + 2] += this.velocities[o + 2] * dt;
-      this.sizes[i] += dt * 2.2;
-      this.alphas[i] = Math.sin(Math.PI * Math.min(1, t * 1.2)) * 0.45;
+      this.sizes[i] = Math.max(0.05, this.sizes[i] + dt * this.growth);
+      this.alphas[i] = Math.sin(Math.PI * Math.min(1, t * 1.2)) * this.opacity;
     }
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.color.needsUpdate = true;

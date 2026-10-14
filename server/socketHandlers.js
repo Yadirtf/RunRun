@@ -1,6 +1,6 @@
 import {
   EVENTS, ROOM_STATUS, TRANSFORM_FLOATS, CHAT_BURST, CHAT_WINDOW_MS,
-  sanitizeNickname, normalizeRoomCode, sanitizeChat,
+  sanitizeNickname, normalizeRoomCode, decodeTransform, sanitizeChat,
 } from '@runrun/shared/protocol';
 
 /**
@@ -21,7 +21,27 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
     broadcastState(room);
   };
 
+  /** Difunde los eventos de poderes acumulados y los inventarios cambiados. */
+  const flushPowerups = (room) => {
+    const pm = room.powerups;
+    if (!pm) return;
+    const events = pm.drain();
+    if (events.length) io.to(room.code).emit(EVENTS.POWERUP_EVENTS, { now: Date.now(), events });
+    for (const [id, items] of pm.drainInventories()) io.to(id).emit(EVENTS.POWERUP_INVENTORY, { items });
+  };
+
   io.on('connection', (socket) => {
+    // Un payload malformado (p. ej. null) no puede tumbar el proceso: cada
+    // manejador recibe siempre un objeto y sus excepciones se registran.
+    const on = (event, handler) => socket.on(event, (...args) => {
+      try {
+        const [first, ...rest] = args;
+        const raw = event === EVENTS.UPDATE_TRANSFORM || event === EVENTS.TIME_SYNC || event === 'disconnect';
+        handler(...(raw ? args : [first !== null && typeof first === 'object' ? first : {}, ...rest]));
+      } catch (err) {
+        log.error?.(`[socket ${socket.id}] ${event}:`, err);
+      }
+    });
     const fail = (message) => socket.emit(EVENTS.ERROR_MESSAGE, message);
     const myRoom = () => rooms.roomOf(socket.id);
 
@@ -46,11 +66,11 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       broadcastState(room);
     };
 
-    socket.on(EVENTS.TIME_SYNC, (_payload, ack) => {
+    on(EVENTS.TIME_SYNC, (_payload, ack) => {
       if (typeof ack === 'function') ack(Date.now());
     });
 
-    socket.on(EVENTS.CREATE_ROOM, (payload = {}) => {
+    on(EVENTS.CREATE_ROOM, (payload = {}) => {
       const nickname = sanitizeNickname(payload.nickname);
       if (!nickname) return fail('El nombre debe tener entre 3 y 16 caracteres.');
       const { room, player } = rooms.createRoom(socket.id, { nickname, carModel: payload.carModel, color: payload.color });
@@ -59,7 +79,7 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       log.info?.(`[sala ${room.code}] creada por ${nickname}`);
     });
 
-    socket.on(EVENTS.JOIN_ROOM, (payload = {}) => {
+    on(EVENTS.JOIN_ROOM, (payload = {}) => {
       const nickname = sanitizeNickname(payload.nickname);
       if (!nickname) return fail('El nombre debe tener entre 3 y 16 caracteres.');
       const code = normalizeRoomCode(payload.roomCode);
@@ -74,22 +94,50 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       broadcastState(res.room);
     });
 
-    socket.on(EVENTS.PLAYER_READY, ({ ready = true } = {}) => {
+    on(EVENTS.PLAYER_READY, ({ ready = true } = {}) => {
       const room = myRoom();
       if (room?.setReady(socket.id, ready)) broadcastState(room);
     });
 
-    socket.on(EVENTS.SELECT_CAR, ({ carModel, color } = {}) => {
+    on(EVENTS.SELECT_CAR, ({ carModel, color } = {}) => {
       const room = myRoom();
       if (room?.selectCar(socket.id, carModel, typeof color === 'string' ? color : undefined)) broadcastState(room);
     });
 
-    socket.on(EVENTS.SELECT_TRACK, ({ trackId } = {}) => {
+    on(EVENTS.SELECT_TRACK, ({ trackId } = {}) => {
       const room = myRoom();
       if (room?.selectTrack(socket.id, trackId)) broadcastState(room);
     });
 
-    socket.on(EVENTS.START_RACE, () => {
+    on(EVENTS.SET_OPTIONS, (options = {}) => {
+      const room = myRoom();
+      if (room?.setOptions(socket.id, { powerups: options?.powerups })) broadcastState(room);
+    });
+
+    on(EVENTS.POWERUP_PICKUP, ({ pad } = {}) => {
+      const room = myRoom();
+      const pm = room?.racingPowerups;
+      if (!pm || !Number.isInteger(pad)) return;
+      // Si se rechaza, reenviar el inventario para que el cliente corrija su predicción.
+      if (!pm.pickup(socket.id, pad)) pm.dirtyInventories.add(socket.id);
+      flushPowerups(room);
+    });
+
+    on(EVENTS.POWERUP_FIRE, (payload = {}) => {
+      const room = myRoom();
+      const pm = room?.racingPowerups;
+      if (!pm || !payload || !Number.isInteger(payload.slot) || typeof payload.type !== 'string') return;
+      if (!pm.fire(socket.id, {
+        slot: payload.slot,
+        type: payload.type,
+        back: payload.back === true,
+        origin: payload.origin,
+        forward: payload.forward,
+      })) pm.dirtyInventories.add(socket.id);
+      flushPowerups(room);
+    });
+
+    on(EVENTS.START_RACE, () => {
       const room = myRoom();
       if (!room) return fail('No estás en ninguna sala.');
       const res = room.startRace(socket.id);
@@ -97,27 +145,33 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       io.to(room.code).emit(EVENTS.RACE_LOADING, {
         trackId: res.trackId,
         laps: res.laps,
+        powerups: res.powerups,
         players: room.toJSON().players,
       });
       broadcastState(room);
       log.info?.(`[sala ${room.code}] carrera en ${res.trackId} con ${room.size} jugadores`);
     });
 
-    socket.on(EVENTS.PLAYER_LOADED, () => {
+    on(EVENTS.PLAYER_LOADED, () => {
       const room = myRoom();
       const res = room?.markLoaded(socket.id);
       if (res) emitCountdown(room, res.startTime);
     });
 
     // Retransmisión binaria a 20 Hz: [id, Float32Array(10)] al resto de la sala.
-    socket.on(EVENTS.UPDATE_TRANSFORM, (buffer) => {
+    on(EVENTS.UPDATE_TRANSFORM, (buffer) => {
       const room = myRoom();
       if (!room || !buffer || buffer.byteLength !== TRANSFORM_FLOATS * 4) return;
       room.touch();
       socket.volatile.to(room.code).emit(EVENTS.PLAYER_MOVED, socket.id, buffer);
+      const pm = room.racingPowerups;
+      if (pm) {
+        const t = decodeTransform(buffer);
+        if (t) pm.updateTransform(socket.id, t);
+      }
     });
 
-    socket.on(EVENTS.CHECKPOINT_PASSED, ({ checkpointId } = {}) => {
+    on(EVENTS.CHECKPOINT_PASSED, ({ checkpointId } = {}) => {
       const room = myRoom();
       if (!room || !Number.isInteger(checkpointId)) return;
       const res = room.passCheckpoint(socket.id, checkpointId);
@@ -133,7 +187,7 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       if (res.raceResults) emitRaceFinished(room, res.raceResults);
     });
 
-    socket.on(EVENTS.RETURN_TO_LOBBY, () => {
+    on(EVENTS.RETURN_TO_LOBBY, () => {
       const room = myRoom();
       if (room?.returnToLobby(socket.id)) broadcastState(room);
     });
@@ -141,7 +195,7 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
     // Chat temporal de la sala: se retransmite y se olvida (no hay historial en el servidor).
     let chatTimes = [];
     let chatSeq = 0;
-    socket.on(EVENTS.CHAT_SEND, ({ text } = {}) => {
+    on(EVENTS.CHAT_SEND, ({ text } = {}) => {
       const room = myRoom();
       const player = room?.players.get(socket.id);
       const clean = sanitizeChat(text);
@@ -161,8 +215,8 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       });
     });
 
-    socket.on(EVENTS.LEAVE_ROOM, handleLeave);
-    socket.on('disconnect', handleLeave);
+    on(EVENTS.LEAVE_ROOM, handleLeave);
+    on('disconnect', handleLeave);
   });
 
   /** Reloj de carreras: transiciones COUNTDOWN→RACING, límite de tiempo y limpieza. */
@@ -173,12 +227,22 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       if (ev?.results) emitRaceFinished(room, ev.results);
     }
   }, 250);
+  // Reloj de poderes a 30 Hz: vuelo de proyectiles, impactos y reapariciones.
+  const powerClock = setInterval(() => {
+    for (const room of rooms.rooms.values()) {
+      const pm = room.racingPowerups;
+      if (!pm) continue;
+      pm.tick();
+      flushPowerups(room);
+    }
+  }, 1000 / 30);
   const cleanupTimer = setInterval(() => {
     for (const code of rooms.cleanup()) log.info?.(`[sala ${code}] cerrada por inactividad`);
   }, 60_000);
 
   return () => {
     clearInterval(raceClock);
+    clearInterval(powerClock);
     clearInterval(cleanupTimer);
   };
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore.js';
 import { useGameState } from '../hooks/useGameState.js';
 import { PlayerList } from '../components/PlayerList.jsx';
+import { PowerupToggle } from '../components/PowerupToggle.jsx';
 import { GarageCard, CarShowroom } from '../components/CarSelector.jsx';
 import { QualityPicker } from '../components/QualityPicker.jsx';
 import { TrackSection } from '../components/room/TrackSection.jsx';
@@ -165,7 +166,9 @@ export function RoomLobby({ client }) {
             </section>
           )}
           {active === 'track' && (
-            <TrackSection trackId={room.trackId} isHost={isHost} onSelect={(id) => client.selectTrack(id)} />
+            <TrackSection trackId={room.trackId} isHost={isHost} onSelect={(id) => client.selectTrack(id)}>
+              <PowerupToggle enabled={room.powerups !== false} disabled={!isHost} onChange={(on) => client.setOptions({ powerups: on })} />
+            </TrackSection>
           )}
           {active === 'players' && <div className="glass players-section swap-in">{players}</div>}
         </main>
@@ -207,6 +210,7 @@ export function RoomLobby({ client }) {
               <span><kbd>Espacio</kbd> freno de mano</span>
               <span><kbd>R</kbd> recolocar</span>
               <span><kbd>C</kbd> cámara</span>
+              <span><kbd>E</kbd><kbd>Q</kbd> poder adelante / atrás · <kbd>Tab</kbd> cambiar</span>
             </div>
             <div className="invite-box">
               <span className="eyebrow">Enlace de invitación</span>

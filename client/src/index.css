@@ -535,6 +535,142 @@ kbd {
 .loading-screen.theme-autumn { background: radial-gradient(circle at 50% 40%, #4a2a14, #120a06 70%); }
 .loading-screen.theme-city { background: radial-gradient(circle at 50% 40%, #2a1640, #08060f 70%); }
 
+/* ----- Poderes ----- */
+.power-hud {
+  position: absolute; left: 20px; bottom: 64px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  pointer-events: none; font-family: var(--font-body);
+}
+.power-health { display: flex; align-items: center; gap: 8px; }
+.power-health-bar {
+  width: 210px; height: 8px; border-radius: 4px; overflow: hidden;
+  background: rgba(10, 10, 15, 0.65); border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.power-health-bar i {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, #2ee88f, #b8f25a);
+  transition: width 0.25s var(--ease);
+}
+.power-health-bar i.low { background: linear-gradient(90deg, #e63946, #ff8c1a); animation: pulse 0.5s ease-in-out infinite alternate; }
+.power-chip {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; background: rgba(10, 10, 15, 0.7);
+}
+.power-chip.shield { color: #38e8ff; border: 1px solid rgba(56, 232, 255, 0.5); }
+.power-chip.nitro { color: #2ee88f; border: 1px solid rgba(46, 232, 143, 0.5); }
+.power-slots { display: flex; align-items: flex-end; gap: 10px; }
+.power-slot {
+  position: relative; pointer-events: auto; touch-action: none; cursor: pointer;
+  width: 50px; height: 50px; border-radius: 14px; padding: 0;
+  display: grid; place-items: center;
+  color: var(--c, rgba(255, 255, 255, 0.3));
+  background: rgba(10, 10, 15, 0.62);
+  border: 1.5px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s var(--ease), border-color 0.15s, box-shadow 0.15s;
+}
+.power-slot.empty { border-style: dashed; background: rgba(10, 10, 15, 0.35); cursor: default; }
+.power-slot.pending { opacity: 0.45; animation: pulse 0.35s ease-in-out infinite alternate; }
+.power-slot.selected {
+  width: 64px; height: 64px; border-radius: 18px;
+  border-color: var(--c);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 30%, transparent), 0 0 24px color-mix(in srgb, var(--c) 55%, transparent), 0 8px 22px rgba(0, 0, 0, 0.45);
+  animation: pop 0.25s var(--ease) both;
+}
+.power-slot .charges {
+  position: absolute; right: -6px; top: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  display: grid; place-items: center; font-size: 11px; color: #fff; background: var(--c); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.power-info {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-height: 32px; max-width: 300px; text-align: left; font-size: 12px; color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+}
+.power-info strong { font-family: var(--font-display); font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; }
+.power-info .muted { color: rgba(255, 255, 255, 0.6); }
+.power-info kbd {
+  display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 4px; font: 700 10px var(--font-body);
+  background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.power-warning {
+  position: absolute; left: 50%; top: 13%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-radius: 14px;
+  font-weight: 900; font-size: 20px; letter-spacing: 0.1em; text-transform: uppercase; color: #fff;
+  background: rgba(230, 57, 70, 0.88); box-shadow: 0 0 40px rgba(230, 57, 70, 0.6);
+  animation: pulse 0.3s ease-in-out infinite alternate;
+}
+.power-warning.shock { background: rgba(40, 120, 230, 0.88); box-shadow: 0 0 40px rgba(58, 168, 255, 0.6); }
+.power-warning small { margin-left: 10px; font-size: 14px; opacity: 0.85; font-variant-numeric: tabular-nums; }
+.banner.wrecked { top: 30%; display: flex; flex-direction: column; align-items: center; gap: 4px; animation: pop 0.3s var(--ease) both; }
+.banner.wrecked small { font-size: 12px; letter-spacing: 0.2em; opacity: 0.85; }
+
+.power-feed {
+  position: absolute; left: 20px; top: 200px; margin: 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 6px; max-width: 320px;
+  font-family: var(--font-body); font-size: 13px; font-weight: 600;
+}
+.power-feed li {
+  padding: 6px 12px; border-radius: 10px; background: rgba(10, 10, 15, 0.7);
+  border-left: 3px solid rgba(255, 255, 255, 0.4); animation: feed-in 0.3s var(--ease) both;
+}
+.power-feed li.good { border-left-color: #2ee88f; }
+.power-feed li.bad { border-left-color: #e63946; }
+@keyframes feed-in { from { opacity: 0; transform: translateX(-16px); } }
+
+.hit-flash {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 45%, color-mix(in srgb, var(--flash, #e63946) 55%, transparent));
+  animation: hit-flash 0.6s ease-out both;
+}
+@keyframes hit-flash { from { opacity: 1; } to { opacity: 0; } }
+
+/* Táctil: botones de disparo en la franja libre entre el volante y los pedales. */
+.power-touch { display: flex; align-items: center; gap: 12px; pointer-events: auto; }
+.power-fire {
+  width: clamp(60px, 17cqh, 78px); height: clamp(60px, 17cqh, 78px); border-radius: 50%;
+  display: grid; place-items: center; touch-action: none;
+  color: var(--c, rgba(255, 255, 255, 0.4));
+  background: radial-gradient(circle at 40% 30%, rgba(60, 64, 80, 0.95), rgba(14, 14, 20, 0.95));
+  border: 2px solid var(--c, rgba(255, 255, 255, 0.2));
+  box-shadow: 0 0 22px color-mix(in srgb, var(--c, transparent) 45%, transparent), 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+.power-fire.back { width: clamp(42px, 12cqh, 52px); height: clamp(42px, 12cqh, 52px); font-size: 16px; color: #fff; border-color: rgba(255, 255, 255, 0.3); }
+.power-fire:disabled { opacity: 0.4; box-shadow: none; }
+.power-fire:active:not(:disabled) { transform: scale(0.92); }
+.is-touch .power-hud {
+  left: 50%; transform: translateX(-50%); bottom: max(8px, env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: auto auto; grid-template-areas: "health health" "slots fire";
+  align-items: end; justify-items: center; column-gap: 12px; row-gap: 6px;
+}
+.is-touch .power-health { grid-area: health; }
+.is-touch .power-slots { grid-area: slots; gap: 8px; }
+.is-touch .power-touch { grid-area: fire; gap: 10px; }
+.is-touch .power-info { display: none; }
+.is-touch .power-health-bar { width: clamp(110px, 20cqw, 180px); height: 6px; }
+.is-touch .power-slot { width: 32px; height: 32px; border-radius: 9px; }
+.is-touch .power-slot.selected { width: 38px; height: 38px; border-radius: 11px; }
+.is-touch .power-fire { width: 56px; height: 56px; }
+.is-touch .power-fire.back { width: 40px; height: 40px; }
+.is-touch .power-feed { left: 50%; top: calc(4px + clamp(120px, 30cqh, 170px)); transform: translateX(-50%); align-items: center; font-size: 11px; max-width: 60cqw; }
+.is-touch .power-warning { top: calc(4px + clamp(120px, 30cqh, 170px) + 6px); font-size: 14px; padding: 6px 14px; }
+@media (max-width: 900px) {
+  .power-feed { top: 170px; font-size: 12px; }
+  .power-health-bar { width: 160px; }
+}
+@media (max-height: 520px) and (min-width: 600px) {
+  .power-feed { top: 150px; }
+  .power-info span { display: none; }
+}
+.powerup-toggle { margin-top: 14px; display: grid; gap: 10px; }
+.powerup-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.powerup-legend li { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; }
+.powerup-legend li span { color: var(--color-muted); }
+.segmented button:disabled { cursor: default; }
+.track-options { grid-column: 1 / -1; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--color-border); background: rgba(255, 255, 255, 0.03); }
+.track-options .powerup-toggle { margin-top: 0; }
+
 /* ===== Inicio minimalista ===== */
 .home-hero {
   position: relative; z-index: 2;
