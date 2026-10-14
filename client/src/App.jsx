@@ -6,6 +6,7 @@ import { RoomLobby } from './screens/RoomLobby.jsx';
 import { GameScreen } from './screens/GameScreen.jsx';
 import { Toast } from './components/Toast.jsx';
 import { ConnectionBadge } from './components/ConnectionBadge.jsx';
+import { CommunityLayer } from './community/CommunityLayer.jsx';
 
 /** Enrutado por fase: la fase la decide el estado de la sala que manda el servidor. */
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
       {phase === 'WAITING_ROOM' && <RoomLobby client={client} />}
       {phase === 'RACE' && <GameScreen client={client} />}
       {phase !== 'RACE' && <ConnectionBadge />}
+      <CommunityLayer />
       <Toast />
     </>
   );
