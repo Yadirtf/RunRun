@@ -11,6 +11,21 @@ services:
         value: production
       - key: CLIENT_ORIGIN
         value: https://runrun-client.onrender.com
+      # Comunidad: claves Web Push (npx web-push generate-vapid-keys) y contacto.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      # Amigos y suscripciones viven en SQLite. Sin disco persistente se borran en
+      # cada despliegue: añade un disco (plan de pago) montado en /var/data y descomenta.
+      # - key: COMMUNITY_DB_PATH
+      #   value: /var/data/runrun.db
+    # disk:
+    #   name: runrun-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
 
   # Frontend estático (Vite)
   - type: web
@@ -29,6 +44,9 @@ services:
         name: Cross-Origin-Embedder-Policy
         value: require-corp
       - path: /index.html
+        name: Cache-Control
+        value: no-cache
+      - path: /sw.js
         name: Cache-Control
         value: no-cache
       - path: /assets/*

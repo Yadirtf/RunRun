@@ -1,9 +1,13 @@
 import { getCar } from '@runrun/shared/cars';
 import { MAX_PLAYERS } from '@runrun/shared/protocol';
 
-/** Parrilla de salida: una plaza por posición, con la pintura y el coche de cada piloto. */
-export function PlayerList({ players, myId }) {
+/**
+ * Parrilla de salida: una fila por piloto (posición, pintura, coche y estado).
+ * Las plazas libres se resumen en una sola fila para no alargar la lista.
+ */
+export function PlayerList({ players, myId, onInvite }) {
   const sorted = [...players].sort((a, b) => a.slot - b.slot);
+  const free = Math.max(0, MAX_PLAYERS - players.length);
   return (
     <ol className="player-list">
       {sorted.map((p, i) => (
@@ -17,12 +21,14 @@ export function PlayerList({ players, myId }) {
           <span className="pstate">{p.isHost ? 'Anfitrión' : p.ready ? 'Listo' : 'Esperando'}</span>
         </li>
       ))}
-      {Array.from({ length: Math.max(0, MAX_PLAYERS - players.length) }, (_, i) => (
-        <li key={`empty-${i}`} className="player-row empty">
-          <span className="grid-pos">P{players.length + i + 1}</span>
-          <span className="pname">Plaza libre</span>
+      {free > 0 && (
+        <li className="player-row empty">
+          <span className="pname">{free === 1 ? '1 plaza libre' : `${free} plazas libres`}</span>
+          {onInvite && (
+            <button type="button" className="link-btn" onClick={onInvite}>Invitar</button>
+          )}
         </li>
-      ))}
+      )}
     </ol>
   );
 }

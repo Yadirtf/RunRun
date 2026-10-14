@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { io as connect } from 'socket.io-client';
 import { createServer } from '../server.js';
-import { EVENTS, encodeTransform, decodeTransform } from '@runrun/shared/protocol';
+import { EVENTS, CHAT_MAX, CHAT_BURST, encodeTransform, decodeTransform } from '@runrun/shared/protocol';
 
 const once = (s, ev) => new Promise((r) => s.once(ev, (...a) => r(a.length > 1 ? a : a[0])));
 
@@ -55,12 +55,52 @@ test('un payload nulo no tumba el servidor', async () => {
   const a = connect(url, { transports: ['websocket'] });
   try {
     await once(a, 'connect');
-    for (const ev of [EVENTS.POWERUP_PICKUP, EVENTS.POWERUP_FIRE, EVENTS.PLAYER_READY, EVENTS.SELECT_CAR, EVENTS.CHECKPOINT_PASSED, EVENTS.SET_OPTIONS]) a.emit(ev, null);
+    for (const ev of [EVENTS.POWERUP_PICKUP, EVENTS.POWERUP_FIRE, EVENTS.PLAYER_READY, EVENTS.SELECT_CAR, EVENTS.CHECKPOINT_PASSED, EVENTS.SET_OPTIONS, EVENTS.CHAT_SEND]) a.emit(ev, null);
     a.emit(EVENTS.CREATE_ROOM, { nickname: 'Ana' });
     const created = await once(a, EVENTS.ROOM_CREATED);
     assert.equal(created.room.powerups, true);
   } finally {
     a.close();
+    server.close();
+  }
+});
+
+test('chat de sala: solo llega a la sala, se limpia y tiene límite de ritmo', async () => {
+  const { server } = createServer();
+  await new Promise((r) => server.listen(0, r));
+  const url = `http://localhost:${server.address().port}`;
+  const a = connect(url, { transports: ['websocket'] });
+  const b = connect(url, { transports: ['websocket'] });
+  const c = connect(url, { transports: ['websocket'] });
+  try {
+    a.emit(EVENTS.CREATE_ROOM, { nickname: 'Ana' });
+    const created = await once(a, EVENTS.ROOM_CREATED);
+    b.emit(EVENTS.JOIN_ROOM, { nickname: 'Beto', roomCode: created.roomCode });
+    await once(b, EVENTS.ROOM_JOINED);
+    c.emit(EVENTS.CREATE_ROOM, { nickname: 'Caro' });
+    await once(c, EVENTS.ROOM_CREATED);
+    let leaked = false;
+    c.on(EVENTS.CHAT_MESSAGE, () => { leaked = true; });
+
+    a.emit(EVENTS.CHAT_SEND, { text: '  hola\n\u202Eequipo  ' });
+    const msg = await once(b, EVENTS.CHAT_MESSAGE);
+    assert.equal(msg.text, 'hola equipo');
+    assert.equal(msg.nickname, 'Ana');
+    assert.equal(msg.playerId, a.id);
+
+    b.emit(EVENTS.CHAT_SEND, { text: '   ' });
+    b.emit(EVENTS.CHAT_SEND, { text: 'x'.repeat(500) });
+    const long = await once(a, EVENTS.CHAT_MESSAGE);
+    assert.equal(long.text.length, CHAT_MAX);
+
+    for (let i = 0; i < CHAT_BURST; i++) a.emit(EVENTS.CHAT_SEND, { text: `m${i}` });
+    const err = await once(a, EVENTS.ERROR_MESSAGE);
+    assert.match(err, /espera/);
+    assert.equal(leaked, false);
+  } finally {
+    a.close();
+    b.close();
+    c.close();
     server.close();
   }
 });

@@ -1,6 +1,6 @@
 import {
-  EVENTS, ROOM_STATUS, TRANSFORM_FLOATS,
-  sanitizeNickname, normalizeRoomCode, decodeTransform,
+  EVENTS, ROOM_STATUS, TRANSFORM_FLOATS, CHAT_BURST, CHAT_WINDOW_MS,
+  sanitizeNickname, normalizeRoomCode, decodeTransform, sanitizeChat,
 } from '@runrun/shared/protocol';
 
 /**
@@ -190,6 +190,29 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
     on(EVENTS.RETURN_TO_LOBBY, () => {
       const room = myRoom();
       if (room?.returnToLobby(socket.id)) broadcastState(room);
+    });
+
+    // Chat temporal de la sala: se retransmite y se olvida (no hay historial en el servidor).
+    let chatTimes = [];
+    let chatSeq = 0;
+    on(EVENTS.CHAT_SEND, ({ text } = {}) => {
+      const room = myRoom();
+      const player = room?.players.get(socket.id);
+      const clean = sanitizeChat(text);
+      if (!player || !clean) return;
+      const now = Date.now();
+      chatTimes = chatTimes.filter((t) => now - t < CHAT_WINDOW_MS);
+      if (chatTimes.length >= CHAT_BURST) return fail('Vas muy rápido: espera un momento para escribir.');
+      chatTimes.push(now);
+      room.touch();
+      io.to(room.code).emit(EVENTS.CHAT_MESSAGE, {
+        id: `${socket.id}:${++chatSeq}`,
+        playerId: socket.id,
+        nickname: player.nickname,
+        color: player.color,
+        text: clean,
+        at: now,
+      });
     });
 
     on(EVENTS.LEAVE_ROOM, handleLeave);

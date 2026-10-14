@@ -89,6 +89,10 @@ export class SocketClient {
     this.socket.emit(EVENTS.POWERUP_FIRE, shot);
   }
 
+  sendChat(text) {
+    this.socket.emit(EVENTS.CHAT_SEND, { text });
+  }
+
   startRace() {
     this.socket.emit(EVENTS.START_RACE);
   }

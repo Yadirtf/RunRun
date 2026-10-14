@@ -544,6 +544,8 @@ Crear `public/_headers`:
 | `player_left` | S→C | `{id}` | Jugador desconectado |
 | `host_transfer` | S→C | `{newHostId}` | Nuevo host asignado |
 | `error_message` | S→C | `string` | Error de sala |
+| `chat_send` | C→S | `{ text }` | Mensaje al chat de la sala (máx. 200 caracteres, 5 cada 5 s) |
+| `chat_message` | S→C | `{ id, playerId, nickname, color, text, at }` | Mensaje retransmitido a la sala; el servidor no guarda historial |
 
 ---
 

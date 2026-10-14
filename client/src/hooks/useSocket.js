@@ -32,6 +32,14 @@ export function useSocket() {
         s().setRoom(room);
       }),
       client.on(EVENTS.ROOM_STATE, (room) => s().setRoom(room)),
+      client.on(EVENTS.CHAT_MESSAGE, (msg) => s().addChat(msg)),
+      client.on(EVENTS.PLAYER_JOINED, ({ newPlayer }) => {
+        if (newPlayer && newPlayer.id !== client.id) s().addChat({ id: `join:${newPlayer.id}:${Date.now()}`, system: true, text: `${newPlayer.nickname} entró a la sala`, at: Date.now() });
+      }),
+      client.on(EVENTS.PLAYER_LEFT, ({ id }) => {
+        const p = s().room?.players.find((x) => x.id === id);
+        if (p) s().addChat({ id: `left:${id}:${Date.now()}`, system: true, text: `${p.nickname} salió de la sala`, at: Date.now() });
+      }),
       client.on(EVENTS.RACE_LOADING, (race) => s().startLoading(race)),
       client.on(EVENTS.RACE_STARTED, ({ startTime }) => s().setStartTime(startTime)),
       client.on(EVENTS.LEADERBOARD_UPDATE, ({ leaderboard }) => s().setLeaderboard(leaderboard)),

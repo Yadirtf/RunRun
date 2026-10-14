@@ -8,6 +8,7 @@
     "./tracks": "./src/tracks.js",
     "./trackPath": "./src/trackPath.js",
     "./cars": "./src/cars.js",
-    "./powerups": "./src/powerups.js"
+    "./powerups": "./src/powerups.js",
+    "./community": "./src/community.js"
   }
 }

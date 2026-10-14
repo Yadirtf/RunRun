@@ -117,6 +117,9 @@ export class Showroom {
     canvas.addEventListener('pointercancel', this.onUp);
     this.onResize = () => this.resize();
     window.addEventListener('resize', this.onResize);
+    // El lienzo vive dentro de un panel cuyo tamaño cambia con el diseño, no solo con la ventana.
+    this.resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(this.onResize) : null;
+    this.resizeObserver?.observe(canvas);
     this.resize();
     this.last = performance.now();
     const loop = (now) => {
@@ -182,6 +185,7 @@ export class Showroom {
   dispose() {
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.onResize);
+    this.resizeObserver?.disconnect();
     this.canvas.removeEventListener('pointerdown', this.onDown);
     this.canvas.removeEventListener('pointermove', this.onMove);
     this.canvas.removeEventListener('pointerup', this.onUp);
