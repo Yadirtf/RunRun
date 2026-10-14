@@ -5,6 +5,8 @@ const NICK_KEY = 'runrun:nickname';
 const CAR_KEY = 'runrun:car';
 const COLOR_KEY = 'runrun:color';
 const QUALITY_KEY = 'runrun:quality';
+const CHAT_KEEP = 100;
+let chatSeq = 0;
 
 function load(key, fallback) {
   try {
@@ -38,6 +40,8 @@ export const useGameStore = create((set) => ({
   leaderboard: [],
   raceResults: null,
   lapEvents: [],
+  /** Chat de la sala actual: vive solo en memoria y se borra al salir. */
+  chat: [],
   toast: null,
 
   setConnection: (connection, myId) => set({ connection, myId }),
@@ -57,8 +61,9 @@ export const useGameStore = create((set) => ({
     save(QUALITY_KEY, quality);
     set({ quality });
   },
-  setRoom: (room) => set({ room }),
-  leaveRoom: () => set({ room: null, race: null, leaderboard: [], raceResults: null }),
+  setRoom: (room) => set((s) => (s.room && room && s.room.code !== room.code ? { room, chat: [] } : { room })),
+  leaveRoom: () => set({ room: null, race: null, leaderboard: [], raceResults: null, chat: [] }),
+  addChat: (msg) => set((s) => ({ chat: [...s.chat, { ...msg, seq: ++chatSeq }].slice(-CHAT_KEEP) })),
   startLoading: (race) => set({ race: { ...race, startTime: null }, leaderboard: [], raceResults: null }),
   setStartTime: (startTime) => set((s) => ({ race: s.race ? { ...s.race, startTime } : s.race })),
   setLeaderboard: (leaderboard) => set({ leaderboard }),

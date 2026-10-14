@@ -8,7 +8,14 @@ export function CarShowroom({ carModel, color, shiftX = 0, shiftY = 0, fill = 0.
   const showroomRef = useRef(null);
 
   useEffect(() => {
-    const s = new Showroom(canvasRef.current, { shiftX, shiftY, fill });
+    let s;
+    try {
+      s = new Showroom(canvasRef.current, { shiftX, shiftY, fill });
+    } catch (err) {
+      // Sin WebGL la sala sigue funcionando: solo falta la vista 3D del coche.
+      console.warn('Vista 3D no disponible', err);
+      return undefined;
+    }
     showroomRef.current = s;
     if (import.meta.env.DEV) window.__showroom = s;
     return () => s.dispose();

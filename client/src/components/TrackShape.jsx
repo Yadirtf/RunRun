@@ -23,13 +23,19 @@ export function useTrackProjection(trackId, size = 200, padding = 14) {
   }, [trackId, size, padding]);
 }
 
-export function TrackShape({ trackId, size = 200, className = '' }) {
+/** Trazado cenital; con `lapSeconds` un punto recorre la pista para mostrar el sentido de marcha. */
+export function TrackShape({ trackId, size = 200, className = '', lapSeconds = 0 }) {
   const { d, start } = useTrackProjection(trackId, size);
   return (
     <svg viewBox={`0 0 ${size} ${size}`} className={`track-shape ${className}`} aria-hidden="true">
       <path d={d} className="track-outline" />
       <path d={d} className="track-line" />
       <circle cx={start[0]} cy={start[1]} r={size / 40} className="track-start" />
+      {lapSeconds > 0 && (
+        <circle r={size / 34} className="track-runner">
+          <animateMotion dur={`${lapSeconds}s`} repeatCount="indefinite" path={d} />
+        </circle>
+      )}
     </svg>
   );
 }

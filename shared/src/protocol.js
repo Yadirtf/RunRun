@@ -30,6 +30,8 @@ export const EVENTS = {
   HOST_TRANSFER: 'host_transfer',
   ERROR_MESSAGE: 'error_message',
   TIME_SYNC: 'time_sync',
+  CHAT_SEND: 'chat_send',
+  CHAT_MESSAGE: 'chat_message',
 };
 
 export const ROOM_STATUS = {
@@ -50,6 +52,10 @@ export const COUNTDOWN_MS = 3000;
 /** Tiempo máximo esperando a que todos carguen la pista antes de la cuenta atrás. */
 export const LOADING_TIMEOUT_MS = 20000;
 export const TRANSFORM_HZ = 20;
+/** Chat de sala: solo se retransmite en vivo, el servidor no guarda nada. */
+export const CHAT_MAX = 200;
+export const CHAT_BURST = 5;
+export const CHAT_WINDOW_MS = 5000;
 
 /**
  * Transformación binaria de un vehículo (Float32 x 10 = 40 bytes frente a
@@ -88,4 +94,10 @@ export function sanitizeNickname(raw) {
 export function normalizeRoomCode(raw) {
   const code = String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   return code.length === ROOM_CODE_LENGTH ? code : null;
+}
+
+/** Texto de chat en una línea, sin caracteres de control; null si queda vacío. */
+export function sanitizeChat(raw) {
+  const clean = String(raw ?? '').replace(/[\p{Cc}\u202A-\u202E\u2066-\u2069]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX);
+  return clean || null;
 }
