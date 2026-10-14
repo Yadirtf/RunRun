@@ -133,9 +133,15 @@ export class GameEngine {
     this.chase = new ChaseCamera(this.camera);
     this.input = new InputController();
     this.particles = new ParticleSystem(this.scene);
-    this.sparks = new ParticleSystem(this.scene, { additive: true, growth: -0.8, rise: -2, opacity: 1 });
     this.audio = new AudioManager();
-    if (this.opts.powerups) this.power = new PowerupSystem(this);
+    if (this.opts.powerups) {
+      this.sparks = new ParticleSystem(this.scene, { additive: true, growth: -0.8, rise: -2, opacity: 1 });
+      this.power = new PowerupSystem(this);
+      // Lo que llegó del servidor mientras se cargaba la pista (cliente lento).
+      if (this.powerInventory) this.power.setInventory(this.powerInventory);
+      for (const events of this.powerBacklog ?? []) this.power.onEvents(events);
+      this.powerBacklog = null;
+    }
     this.checkpoints = new CheckpointSystem(this.path, this.trackDef, {
       onCheckpoint: (id) => this.handleCheckpoint(id),
     });
@@ -342,11 +348,13 @@ export class GameEngine {
   // ---- Poderes (ver powerups/PowerupSystem.js) ----
 
   onPowerEvents(events) {
-    this.power?.onEvents(events);
+    if (this.power) this.power.onEvents(events);
+    else if (this.opts.powerups) (this.powerBacklog ??= []).push(events);
   }
 
   onPowerInventory(items) {
-    this.power?.setInventory(items);
+    if (this.power) this.power.setInventory(items);
+    else this.powerInventory = items;
   }
 
   canUsePower() {
@@ -369,7 +377,7 @@ export class GameEngine {
     const kind = e.wrecked ? 'wreck' : e.type;
     this.vehicle.applyHit(kind, e.dir, Math.random() < 0.5 ? -1 : 1);
     this.chase.shake = e.wrecked || e.type === 'shunt' || e.type === 'mine' ? 2.2 : 1.2;
-    if (e.wrecked) this.wreckTimer = WRECK_MS / 1000 - 0.2;
+    if (e.wrecked) this.wreckTimer = WRECK_MS / 1000 + 0.05; // nunca antes que el servidor
     navigator.vibrate?.(e.wrecked ? [60, 40, 120] : 50);
   }
 
@@ -413,7 +421,7 @@ export class GameEngine {
 
     this.emitParticles(dt);
     this.particles.update(dt);
-    this.sparks.update(dt);
+    this.sparks?.update(dt);
     this.landscape.update(this.time);
 
     if (this.opts.startTime == null) {

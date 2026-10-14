@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { projectToTrack } from '@runrun/shared/trackPath';
 import {
-  POWERUPS, MAX_SLOTS, PAD_RADIUS, NITRO_MS, NITRO_BRAKE_MS, SHIELD_MS, FIRE_COOLDOWN_MS,
+  POWERUPS, MAX_SLOTS, PAD_RADIUS, NITRO_MS, NITRO_BRAKE_MS, SHIELD_MS, CLIENT_FIRE_INTERVAL_MS, CLUSTER_LOCK_MS,
   SHOCK_RADIUS, BARGE_RADIUS, HEALTH_MAX,
-  powerupPads, trackPoint, trackTangent, deltaS, boltPosition, shuntTravel,
+  powerupPads, trackPoint, trackTangent, deltaS, boltPosition, shuntTravel, sweptDistance,
 } from '@runrun/shared/powerups';
 import { iconTexture, glowMaterial, createVisualKit } from './powerupVisuals.js';
 
@@ -34,7 +34,10 @@ export class PowerupSystem {
     this.scene.add(this.group);
 
     this.items = [];
+    /** Recogidas pedidas y aún sin confirmar: `{type, pad, until}`. */
     this.pendingItems = [];
+    this.lastCluster = { id: -1, until: 0 };
+    this.prevPos = null;
     this.selected = 0;
     this.health = HEALTH_MAX;
     this.shieldUntil = 0;
@@ -84,7 +87,13 @@ export class PowerupSystem {
   }
 
   updatePads(dt, now, me) {
+    this.pendingItems = this.pendingItems.filter((p) => p.until > now);
     const free = MAX_SLOTS - this.items.length - this.pendingItems.length;
+    // Prueba con el segmento recorrido desde el fotograma anterior: a 30 fps y
+    // 70 m/s el coche avanza más de 2 m por fotograma y podría saltarse un icono.
+    const from = this.prevPos && me ? this.prevPos : null;
+    const cur = me ? [me.x, me.y, me.z] : null;
+    this.prevPos = cur;
     for (const pad of this.pads) {
       const active = now >= pad.until && now >= pad.pendingUntil;
       // Reaparición con "pop" de escala.
@@ -100,13 +109,14 @@ export class PowerupSystem {
       pad.ring.material.opacity = active ? 0.55 + Math.sin(this.time * 3 + pad.id) * 0.2 : 0.12;
       pad.beam.visible = active;
 
-      if (!active || free <= 0 || !me) continue;
-      const dx = me.x - pad.position[0];
-      const dz = me.z - pad.position[2];
-      if (dx * dx + dz * dz < (PAD_RADIUS + 0.3) ** 2 && Math.abs(me.y - pad.position[1]) < 3.5) {
+      if (!active || free <= 0 || !cur) continue;
+      if (pad.cluster === this.lastCluster.id && now < this.lastCluster.until) continue;
+      const seg = from && Math.hypot(cur[0] - from[0], cur[2] - from[2]) < 10 ? from : cur;
+      if (sweptDistance(seg, cur, pad.position, pad.position) < PAD_RADIUS && Math.abs(me.y - pad.position[1]) < 3.5) {
         // Predicción: se oculta ya y se reserva hueco; el servidor confirma.
         pad.pendingUntil = now + 900;
-        this.pendingItems.push(pad.type);
+        this.pendingItems.push({ type: pad.type, pad: pad.id, until: now + 900 });
+        this.lastCluster = { id: pad.cluster, until: now + CLUSTER_LOCK_MS };
         this.host.opts.net.pickupPowerup?.(pad.id);
         this.host.audio?.sfx('pickup');
         this.burst(pad.position, POWERUPS[pad.type].color, 18, 5);
@@ -122,7 +132,6 @@ export class PowerupSystem {
 
   setInventory(items) {
     this.items = items.filter((i) => POWERUPS[i.type]);
-    this.pendingItems = [];
     if (this.selected >= this.items.length) this.selected = Math.max(0, this.items.length - 1);
   }
 
@@ -141,7 +150,7 @@ export class PowerupSystem {
     const now = this.serverNow();
     const item = this.items[this.selected];
     if (!item || now < this.fireLock || !this.host.canUsePower()) return;
-    this.fireLock = now + FIRE_COOLDOWN_MS + 30;
+    this.fireLock = now + CLIENT_FIRE_INTERVAL_MS;
     const v = this.host.vehicle;
     const p = v.position;
     const f = v.localToWorld({ x: 0, y: 0, z: 1 });
@@ -173,6 +182,8 @@ export class PowerupSystem {
           if (pad) {
             pad.until = e.until;
             pad.pendingUntil = 0;
+            // Confirmada: el poder ya viene (o vendrá) en el inventario.
+            if (e.by === this.myId) this.pendingItems = this.pendingItems.filter((p) => p.pad !== e.pad);
             if (e.by !== this.myId) this.burst(pad.position, POWERUPS[pad.type].color, 12, 4);
           }
           break;
@@ -594,7 +605,7 @@ export class PowerupSystem {
     const now = this.serverNow();
     return {
       items: this.items.map((i) => ({ type: i.type, charges: i.charges })),
-      pending: [...this.pendingItems],
+      pending: this.pendingItems.map((p) => p.type),
       selected: this.selected,
       health: this.health,
       shieldMs: Math.max(0, this.shieldUntil - now),

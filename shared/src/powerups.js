@@ -110,7 +110,11 @@ export const WRECK_MS = 2500;
 export const HIT_IMMUNE_MS = 350;
 /** Tras reaparecer de un destrozo, protegido para reincorporarse. */
 export const RESPAWN_IMMUNE_MS = 2000;
-export const FIRE_COOLDOWN_MS = 250;
+/** Cadencia mínima entre disparos en el servidor; el cliente espera algo más para absorber el jitter de red. */
+export const FIRE_COOLDOWN_MS = 120;
+export const CLIENT_FIRE_INTERVAL_MS = 280;
+/** Tras coger un icono, los otros dos del mismo grupo no se pueden coger en esa pasada. */
+export const CLUSTER_LOCK_MS = 3000;
 
 // ---------------------------------------------------------------------------
 // Geometría sobre el trazado
@@ -297,7 +301,8 @@ export function powerupPads(trackDef, path) {
       const s = nominal + d;
       if (s < startS || s > endS) continue;
       const i = Math.round(s / step) % count;
-      const score = window(i, -15, 15).max * 400 + Math.abs(d) * 0.01;
+      // Redondeado: el desempate no puede depender de diferencias de coma flotante entre motores JS.
+      const score = Math.round((window(i, -15, 15).max * 400 + Math.abs(d) * 0.01) * 1e4);
       if (score < bestScore) {
         bestScore = score;
         best = i;

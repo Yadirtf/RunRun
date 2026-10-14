@@ -258,3 +258,39 @@ test('los que terminaron no pueden ser blanco ni disparar', () => {
   pm.fire('a', { slot: 0, type: 'shunt' });
   assert.equal(pm.drain().find((e) => e.k === 'spawn').p.target, null);
 });
+
+test('un icono por grupo y pasada; la mina no se gasta con un coche invulnerable', () => {
+  const { pm, c } = setup();
+  pm.addPlayer('a');
+  pm.addPlayer('b');
+  const [p0, p1] = pm.pads.filter((p) => p.cluster === 0);
+  place(pm, c, 'a', p0.s, p0.lateral);
+  assert.equal(pm.pickup('a', p0.id), true);
+  place(pm, c, 'a', p1.s, p1.lateral);
+  assert.equal(pm.pickup('a', p1.id), false, 'mismo grupo en la misma pasada');
+
+  place(pm, c, 'b', 600, 0);
+  give(pm, 'b', 'mine');
+  pm.fire('b', { slot: 0, type: 'mine', back: true });
+  c.t += 4000;
+  pm.players.get('a').immuneUntil = c.t + 5000;
+  place(pm, c, 'a', 590, 0);
+  place(pm, c, 'a', 600, 0);
+  assert.equal([...pm.projectiles.values()].filter((p) => p.type === 'mine').length, 1);
+});
+
+test('la mina propia no detiene el misil propio', () => {
+  const { pm, c } = setup();
+  pm.addPlayer('a');
+  pm.addPlayer('b');
+  const cars = [{ id: 'a', s: 300, speed: 0 }, { id: 'b', s: 420, speed: 0 }];
+  drive(pm, c, cars, 100);
+  give(pm, 'a', 'mine');
+  pm.fire('a', { slot: 0, type: 'mine' });
+  drive(pm, c, cars, 1000);
+  give(pm, 'a', 'shunt');
+  pm.drain();
+  pm.fire('a', { slot: 0, type: 'shunt' });
+  drive(pm, c, cars, 2500);
+  assert.ok(pm.drain().some((e) => e.k === 'hit' && e.victim === 'b'));
+});

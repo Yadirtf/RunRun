@@ -4,7 +4,7 @@ import {
   SHUNT_LIFE_MS, SHUNT_BACK_RANGE, BOLT_RADIUS, BOLT_AIM_DEG, BOLT_SPEED,
   MINE_RADIUS, MINE_ARM_MS, MINE_LIFE_MS, MINE_THROW,
   SHOCK_ARM_MS, SHOCK_LIFE_MS, SHOCK_RADIUS, BARGE_RADIUS,
-  SHIELD_MS, NITRO_MS, NITRO_BRAKE_MS, WRECK_MS, HIT_IMMUNE_MS, RESPAWN_IMMUNE_MS, FIRE_COOLDOWN_MS,
+  SHIELD_MS, NITRO_MS, NITRO_BRAKE_MS, WRECK_MS, HIT_IMMUNE_MS, RESPAWN_IMMUNE_MS, FIRE_COOLDOWN_MS, CLUSTER_LOCK_MS,
   powerupPads, raceProgress, trackPoint, wrapS, deltaS, boltPosition, boltLifetime, shuntTravel,
   shockDomes, sweptDistance,
 } from '@runrun/shared/powerups';
@@ -13,6 +13,8 @@ import {
 const CAR_RADIUS = 1.1;
 /** Cuánto se extrapola la posición de un coche sin transformaciones nuevas. */
 const MAX_EXTRAPOLATION_MS = 200;
+/** Velocidad máxima creíble de un coche (m/s), nitro incluido. */
+const MAX_CAR_SPEED = 90;
 
 /**
  * Autoridad de los poderes en una carrera: iconos de la pista, inventario de
@@ -57,6 +59,8 @@ export class PowerupManager {
       wreckedUntil: 0,
       inventory: [],
       lastFire: 0,
+      lastCluster: -1,
+      lastPickup: 0,
     });
   }
 
@@ -106,9 +110,15 @@ export class PowerupManager {
     const prev = p.pos;
     const dt = (now - p.at) / 1000;
     const teleport = !prev || Math.hypot(pos[0] - prev[0], pos[2] - prev[2]) > 15;
-    p.vel = !teleport && dt > 0.005 && dt < 0.5
-      ? [(pos[0] - prev[0]) / dt, (pos[1] - prev[1]) / dt, (pos[2] - prev[2]) / dt]
-      : [0, 0, 0];
+    if (teleport || dt >= 0.5) p.vel = [0, 0, 0];
+    else if (dt >= 0.03) {
+      // Paquetes que llegan agrupados (dt pequeño) darían velocidades absurdas:
+      // se conserva la anterior y se limita a lo físicamente posible.
+      const v = [(pos[0] - prev[0]) / dt, (pos[1] - prev[1]) / dt, (pos[2] - prev[2]) / dt];
+      const m = Math.hypot(v[0], v[2]);
+      const k = m > MAX_CAR_SPEED ? MAX_CAR_SPEED / m : 1;
+      p.vel = [v[0] * k, Math.max(-20, Math.min(20, v[1])), v[2] * k];
+    }
     const q = t.rotation;
     const fx = 2 * (q.x * q.z + q.w * q.y);
     const fz = 1 - 2 * (q.x * q.x + q.y * q.y);
@@ -131,8 +141,7 @@ export class PowerupManager {
         if (pr.owner === p.id && now - pr.t0 < 3000) continue;
         const at = [pr.x, pr.y, pr.z];
         if (Math.abs(pr.y - to[1]) > 4) continue;
-        if (sweptDistance(from, to, at, at) < MINE_RADIUS) {
-          this.applyHit(p.id, 'mine', pr.owner, p.fwd, now);
+        if (sweptDistance(from, to, at, at) < MINE_RADIUS && this.applyHit(p.id, 'mine', pr.owner, p.fwd, now)) {
           this.remove(pr, 'hit');
         }
       } else if (pr.type === 'shock') {
@@ -160,12 +169,16 @@ export class PowerupManager {
     const pad = this.pads[padId];
     if (!p || !pad || !this.alive(p, now)) return false;
     if (now < pad.until || p.inventory.length >= MAX_SLOTS) return false;
+    // Un icono por grupo y pasada: elegir carril es la decisión (riesgo/recompensa).
+    if (p.lastCluster === pad.cluster && now - p.lastPickup < CLUSTER_LOCK_MS) return false;
     const pos = this.positionAt(p, now);
     const speed = Math.hypot(p.vel[0], p.vel[2]);
     const tolerance = PAD_RADIUS + 4 + speed * 0.2;
     if (Math.hypot(pos[0] - pad.position[0], pos[2] - pad.position[2]) > tolerance) return false;
     p.inventory.push({ type: pad.type, charges: POWERUPS[pad.type].charges ?? 1 });
     pad.until = now + PAD_RESPAWN_MS;
+    p.lastCluster = pad.cluster;
+    p.lastPickup = now;
     this.dirtyInventories.add(id);
     this.events.push({ k: 'pad', pad: pad.id, by: id, until: pad.until });
     return true;
@@ -348,7 +361,7 @@ export class PowerupManager {
     }
     const t = target ?? me;
     const speed = Math.hypot(t.vel[0], t.vel[2]);
-    const s = t.s + Math.max(60, speed * 2.4);
+    const s = t.s + Math.max(60, Math.min(150, speed * 2.4));
     const seed = Math.floor(this.random() * 1000);
     this.add({
       type: 'shock',
@@ -374,9 +387,9 @@ export class PowerupManager {
       if (d > BARGE_RADIUS || Math.abs(rp[1] - me.pos[1]) > 4) continue;
       this.applyHit(r.id, 'barge', me.id, d > 0.1 ? [dx / d, 0, dz / d] : r.fwd, now);
     }
-    // Barrido defensivo: destruye minas y proyectiles enemigos cercanos.
+    // Barrido defensivo: destruye minas y proyectiles enemigos cercanos (los propios se quedan).
     for (const pr of [...this.projectiles.values()]) {
-      if (pr.type === 'shock' || (pr.owner === me.id && pr.type !== 'mine')) continue;
+      if (pr.type === 'shock' || pr.owner === me.id) continue;
       const at = this.worldPos(pr, now);
       if (Math.hypot(at[0] - me.pos[0], at[2] - me.pos[2]) < BARGE_RADIUS) this.remove(pr, 'barge');
     }
@@ -450,7 +463,7 @@ export class PowerupManager {
 
     // Una mina en su camino lo detiene (defensa clásica: soltarla detrás).
     for (const m of this.projectiles.values()) {
-      if (m.type !== 'mine' || now < m.armAt) continue;
+      if (m.type !== 'mine' || m.owner === sh.owner || now < m.armAt) continue;
       const a = deltaS(this.path, prevS, m.s) * sh.dir;
       const span = Math.abs(deltaS(this.path, prevS, s));
       if (a >= -1 && a <= span + 1 && Math.abs(m.lateral - sh.lateral) < 3.2) {

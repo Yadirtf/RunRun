@@ -47,3 +47,20 @@ test('dos clientes: crear, unirse, iniciar y recibir transformaciones binarias',
     server.close();
   }
 });
+
+test('un payload nulo no tumba el servidor', async () => {
+  const { server } = createServer();
+  await new Promise((r) => server.listen(0, r));
+  const url = `http://localhost:${server.address().port}`;
+  const a = connect(url, { transports: ['websocket'] });
+  try {
+    await once(a, 'connect');
+    for (const ev of [EVENTS.POWERUP_PICKUP, EVENTS.POWERUP_FIRE, EVENTS.PLAYER_READY, EVENTS.SELECT_CAR, EVENTS.CHECKPOINT_PASSED, EVENTS.SET_OPTIONS]) a.emit(ev, null);
+    a.emit(EVENTS.CREATE_ROOM, { nickname: 'Ana' });
+    const created = await once(a, EVENTS.ROOM_CREATED);
+    assert.equal(created.room.powerups, true);
+  } finally {
+    a.close();
+    server.close();
+  }
+});
