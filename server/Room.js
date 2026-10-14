@@ -2,6 +2,7 @@ import { ROOM_STATUS, MAX_PLAYERS, COUNTDOWN_MS, LOADING_TIMEOUT_MS } from '@run
 import { getTrack, DEFAULT_TRACK_ID, TRACKS } from '@runrun/shared/tracks';
 import { getCar, CARS, PLAYER_COLORS } from '@runrun/shared/cars';
 import { CheckpointValidator } from './CheckpointValidator.js';
+import { PowerupManager } from './PowerupManager.js';
 
 /**
  * Agregado de dominio "Sala": jugadores, host, pista elegida y estado de la
@@ -24,6 +25,9 @@ export class Room {
     this.loadingDeadline = null;
     this.loaded = new Set();
     this.maxDurationMs = 10 * 60 * 1000;
+    /** Opción de sala: carrera con poderes (por defecto) o carrera limpia. */
+    this.powerupsEnabled = true;
+    this.powerups = null;
   }
 
   get size() {
@@ -65,6 +69,7 @@ export class Room {
     if (!player) return {};
     this.players.delete(id);
     this.loaded.delete(id);
+    this.powerups?.removePlayer(id);
     this.touch();
     if (player.isHost && this.players.size > 0) {
       const next = [...this.players.values()].sort((a, b) => a.slot - b.slot)[0];
@@ -100,6 +105,13 @@ export class Room {
     return true;
   }
 
+  setOptions(id, { powerups } = {}) {
+    if (id !== this.hostId || this.status !== ROOM_STATUS.LOBBY) return false;
+    if (typeof powerups === 'boolean') this.powerupsEnabled = powerups;
+    this.touch();
+    return true;
+  }
+
   /** El host siempre cuenta como listo; el resto debe marcar [LISTO]. */
   canStart(id) {
     if (id !== this.hostId) return { error: 'Solo el anfitrión puede iniciar la carrera.' };
@@ -124,9 +136,10 @@ export class Room {
     this.loadingDeadline = this.now() + LOADING_TIMEOUT_MS;
     this.startTime = null;
     this.results = [];
+    this.powerups = null;
     for (const p of this.players.values()) p.race = null;
     this.touch();
-    return { ok: true, trackId: this.trackId, laps: track.laps };
+    return { ok: true, trackId: this.trackId, laps: track.laps, powerups: this.powerupsEnabled };
   }
 
   /** @returns {{startTime: number} | null} la hora de salida si ya están todos. */
@@ -146,6 +159,10 @@ export class Room {
     this.loadingDeadline = null;
     this.status = ROOM_STATUS.COUNTDOWN;
     for (const p of this.players.values()) p.race = this.validator.createState(this.startTime);
+    if (this.powerupsEnabled) {
+      this.powerups = new PowerupManager(getTrack(this.trackId), { now: this.now });
+      for (const id of this.players.keys()) this.powerups.addPlayer(id);
+    }
     this.touch();
     return { startTime: this.startTime };
   }
@@ -170,7 +187,10 @@ export class Room {
     const p = this.players.get(id);
     if (!p || !p.race || this.status !== ROOM_STATUS.RACING) return { ok: false, reason: 'not_racing' };
     const res = this.validator.validate(p.race, checkpointId, this.now());
-    if (res.ok) this.touch();
+    if (res.ok) {
+      this.touch();
+      this.powerups?.setRace(id, this.validator.progressOf(p.race), Boolean(res.finished));
+    }
     if (res.finished) {
       this.results.push(this.resultOf(p));
       // Tras el ganador, el resto tiene 60 s para cruzar la meta.
@@ -212,6 +232,7 @@ export class Room {
     this.startTime = null;
     this.raceDeadline = null;
     this.loaded = new Set();
+    this.powerups = null;
     for (const p of this.players.values()) {
       p.ready = false;
       p.race = null;
@@ -245,6 +266,12 @@ export class Room {
       });
   }
 
+  /** Los poderes solo funcionan con la carrera en marcha. */
+  get racingPowerups() {
+    if (this.status === ROOM_STATUS.COUNTDOWN && this.now() >= this.startTime) this.status = ROOM_STATUS.RACING;
+    return this.status === ROOM_STATUS.RACING ? this.powerups : null;
+  }
+
   touch() {
     this.lastActivity = this.now();
   }
@@ -257,6 +284,7 @@ export class Room {
       status: this.status,
       trackId: this.trackId,
       startTime: this.startTime,
+      powerups: this.powerupsEnabled,
       players: [...this.players.values()]
         .sort((a, b) => a.slot - b.slot)
         .map(({ id, nickname, carModel, color, slot, isHost, ready }) => ({ id, nickname, carModel, color, slot, isHost, ready })),

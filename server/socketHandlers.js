@@ -1,6 +1,6 @@
 import {
   EVENTS, ROOM_STATUS, TRANSFORM_FLOATS,
-  sanitizeNickname, normalizeRoomCode,
+  sanitizeNickname, normalizeRoomCode, decodeTransform,
 } from '@runrun/shared/protocol';
 
 /**
@@ -19,6 +19,15 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
   const emitRaceFinished = (room, results) => {
     io.to(room.code).emit(EVENTS.RACE_FINISHED, { results });
     broadcastState(room);
+  };
+
+  /** Difunde los eventos de poderes acumulados y los inventarios cambiados. */
+  const flushPowerups = (room) => {
+    const pm = room.powerups;
+    if (!pm) return;
+    const events = pm.drain();
+    if (events.length) io.to(room.code).emit(EVENTS.POWERUP_EVENTS, { now: Date.now(), events });
+    for (const [id, items] of pm.drainInventories()) io.to(id).emit(EVENTS.POWERUP_INVENTORY, { items });
   };
 
   io.on('connection', (socket) => {
@@ -89,6 +98,34 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       if (room?.selectTrack(socket.id, trackId)) broadcastState(room);
     });
 
+    socket.on(EVENTS.SET_OPTIONS, (options = {}) => {
+      const room = myRoom();
+      if (room?.setOptions(socket.id, { powerups: options?.powerups })) broadcastState(room);
+    });
+
+    socket.on(EVENTS.POWERUP_PICKUP, ({ pad } = {}) => {
+      const room = myRoom();
+      const pm = room?.racingPowerups;
+      if (!pm || !Number.isInteger(pad)) return;
+      // Si se rechaza, reenviar el inventario para que el cliente corrija su predicción.
+      if (!pm.pickup(socket.id, pad)) pm.dirtyInventories.add(socket.id);
+      flushPowerups(room);
+    });
+
+    socket.on(EVENTS.POWERUP_FIRE, (payload = {}) => {
+      const room = myRoom();
+      const pm = room?.racingPowerups;
+      if (!pm || !payload || !Number.isInteger(payload.slot) || typeof payload.type !== 'string') return;
+      if (!pm.fire(socket.id, {
+        slot: payload.slot,
+        type: payload.type,
+        back: payload.back === true,
+        origin: payload.origin,
+        forward: payload.forward,
+      })) pm.dirtyInventories.add(socket.id);
+      flushPowerups(room);
+    });
+
     socket.on(EVENTS.START_RACE, () => {
       const room = myRoom();
       if (!room) return fail('No estás en ninguna sala.');
@@ -97,6 +134,7 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       io.to(room.code).emit(EVENTS.RACE_LOADING, {
         trackId: res.trackId,
         laps: res.laps,
+        powerups: res.powerups,
         players: room.toJSON().players,
       });
       broadcastState(room);
@@ -115,6 +153,11 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       if (!room || !buffer || buffer.byteLength !== TRANSFORM_FLOATS * 4) return;
       room.touch();
       socket.volatile.to(room.code).emit(EVENTS.PLAYER_MOVED, socket.id, buffer);
+      const pm = room.racingPowerups;
+      if (pm) {
+        const t = decodeTransform(buffer);
+        if (t) pm.updateTransform(socket.id, t);
+      }
     });
 
     socket.on(EVENTS.CHECKPOINT_PASSED, ({ checkpointId } = {}) => {
@@ -150,12 +193,22 @@ export function registerSocketHandlers(io, rooms, { log = console } = {}) {
       if (ev?.results) emitRaceFinished(room, ev.results);
     }
   }, 250);
+  // Reloj de poderes a 30 Hz: vuelo de proyectiles, impactos y reapariciones.
+  const powerClock = setInterval(() => {
+    for (const room of rooms.rooms.values()) {
+      const pm = room.racingPowerups;
+      if (!pm) continue;
+      pm.tick();
+      flushPowerups(room);
+    }
+  }, 1000 / 30);
   const cleanupTimer = setInterval(() => {
     for (const code of rooms.cleanup()) log.info?.(`[sala ${code}] cerrada por inactividad`);
   }, 60_000);
 
   return () => {
     clearInterval(raceClock);
+    clearInterval(powerClock);
     clearInterval(cleanupTimer);
   };
 }

@@ -30,6 +30,12 @@ export const EVENTS = {
   HOST_TRANSFER: 'host_transfer',
   ERROR_MESSAGE: 'error_message',
   TIME_SYNC: 'time_sync',
+  SET_OPTIONS: 'set_options',
+  // Poderes (ver shared/src/powerups.js)
+  POWERUP_PICKUP: 'powerup_pickup',
+  POWERUP_FIRE: 'powerup_fire',
+  POWERUP_INVENTORY: 'powerup_inventory',
+  POWERUP_EVENTS: 'powerup_events',
 };
 
 export const ROOM_STATUS = {

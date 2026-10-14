@@ -76,6 +76,19 @@ export class SocketClient {
     this.socket.emit(EVENTS.SELECT_CAR, { carModel, color });
   }
 
+  /** Opciones de sala (solo el anfitrión): `{ powerups: boolean }`. */
+  setOptions(options) {
+    this.socket.emit(EVENTS.SET_OPTIONS, options);
+  }
+
+  pickupPowerup(pad) {
+    this.socket.emit(EVENTS.POWERUP_PICKUP, { pad });
+  }
+
+  firePowerup(shot) {
+    this.socket.emit(EVENTS.POWERUP_FIRE, shot);
+  }
+
   startRace() {
     this.socket.emit(EVENTS.START_RACE);
   }

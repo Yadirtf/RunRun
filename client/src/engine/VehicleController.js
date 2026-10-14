@@ -11,6 +11,23 @@ import { carCircles, deepestOverlap, contactDeltaV } from './carContacts.js';
 
 const KMH = 3.6;
 
+/**
+ * Reacción física a cada impacto de poder. `keep` = fracción de velocidad que
+ * conserva, `hop` = salto vertical (m/s), `yaw`/`roll` = giro impuesto (rad/s),
+ * `stun` = segundos con el motor cortado, `spin` = segundos sin ESC (derrapa),
+ * `push` = empuje lateral (m/s). El vuelco espectacular del misil es solo
+ * visual (GameEngine): la física se queda en salto + trompo, que el coche
+ * siempre recupera sin volcar (ver runrun-tools/powerhits.mjs).
+ */
+export const HIT_REACTIONS = {
+  shunt: { keep: 0.35, hop: 4.5, yaw: 4, roll: 0.6, stun: 1.2, spin: 1.0 },
+  mine: { keep: 0.5, hop: 4, yaw: 3, roll: 0.4, stun: 0.9, spin: 0.8 },
+  bolt: { keep: 0.8, hop: 0.8, yaw: 2.6, roll: 0, stun: 0.35, spin: 0.45 },
+  shock: { keep: 0.45, hop: 1.2, yaw: 0, roll: 0, stun: 1.1, spin: 0 },
+  barge: { keep: 0.85, hop: 1.5, yaw: 1.5, roll: 0, stun: 0.3, spin: 0.35, push: 10 },
+  wreck: { keep: 0.08, hop: 3.5, yaw: 2.5, roll: 0.5, stun: 2.3, spin: 2.3 },
+};
+
 export class VehicleController {
   /**
    * @param {typeof import('@dimforge/rapier3d-compat')} RAPIER
@@ -94,6 +111,8 @@ export class VehicleController {
     this.reverseHold = 0;
     /** Marcha atrás engranada (freno mantenido con el coche parado). */
     this.reversing = false;
+    /** Temporizadores (s) de los efectos de poderes: aturdido, trompo, nitro, freno nitro. */
+    this.fx = { stun: 0, spin: 0, shock: 0, boost: 0, nitroBrake: 0 };
     this.reset(spawn);
   }
 
@@ -107,6 +126,53 @@ export class VehicleController {
     this.flipTimer = 0;
     this.reverseHold = 0;
     this.reversing = false;
+    if (this.fx) for (const k of Object.keys(this.fx)) this.fx[k] = 0;
+  }
+
+  /**
+   * Impacto de un poder. `dir` = [x, z] dirección del golpe (para el empuje),
+   * `sign` = sentido del trompo (+1/-1).
+   */
+  applyHit(kind, dir = null, sign = 1) {
+    const h = HIT_REACTIONS[kind];
+    if (!h) return;
+    const v = this.body.linvel();
+    let vx = v.x * h.keep;
+    let vz = v.z * h.keep;
+    if (h.push && dir) {
+      vx += dir[0] * h.push;
+      vz += dir[1] * h.push;
+    }
+    this.body.setLinvel({ x: vx, y: Math.max(0, v.y) + h.hop, z: vz }, true);
+    const up = this.localToWorld({ x: 0, y: 1, z: 0 });
+    const fwd = this.localToWorld({ x: 0, y: 0, z: 1 });
+    const w = this.body.angvel();
+    const yaw = h.yaw * sign;
+    const roll = h.roll * sign;
+    this.body.setAngvel({
+      x: w.x * 0.3 + up.x * yaw + fwd.x * roll,
+      y: w.y * 0.3 + up.y * yaw + fwd.y * roll,
+      z: w.z * 0.3 + up.z * yaw + fwd.z * roll,
+    }, true);
+    this.fx.stun = Math.max(this.fx.stun, h.stun);
+    this.fx.spin = Math.max(this.fx.spin, h.spin);
+    if (kind === 'shock') this.fx.shock = h.stun;
+    this.fx.boost = 0;
+  }
+
+  /** Nitro: más par y más velocidad punta durante `seconds`, con un empujón inicial. */
+  startBoost(seconds) {
+    this.fx.boost = seconds;
+    this.fx.nitroBrake = 0;
+    const f = this.localToWorld({ x: 0, y: 0, z: 1 });
+    const k = this.stats.mass * 3;
+    this.body.applyImpulse({ x: f.x * k, y: 0, z: f.z * k }, true);
+  }
+
+  /** Nitro hacia atrás: frenazo brusco que además deja rotar el coche (como el freno de mano). */
+  startNitroBrake(seconds) {
+    this.fx.nitroBrake = seconds;
+    this.fx.boost = 0;
   }
 
   /** Vector local del chasis rotado a mundo. */
@@ -139,13 +205,20 @@ export class VehicleController {
     // sin control sobre sí mismo, de pie sobre el morro o la cola.
     this.body.resetForces(true);
     this.body.resetTorques(true);
+    const fx = this.fx;
+    for (const k of Object.keys(fx)) fx[k] = Math.max(0, fx[k] - dt);
+    if (fx.stun > 0) {
+      // Aturdido por un impacto: sin motor (la descarga deja un hilo de gas).
+      input = { ...input, throttle: input.throttle * (fx.shock > 0 ? 0.3 : 0), handbrake: false };
+    }
+    if (fx.boost > 0 && !locked) input = { ...input, throttle: Math.max(input.throttle, 0.85), brake: 0 };
     const vel = this.body.linvel();
     const fwd = this.localToWorld({ x: 0, y: 0, z: 1 });
     const up = this.localToWorld({ x: 0, y: 1, z: 0 });
     this.forwardSpeed = vel.x * fwd.x + vel.y * fwd.y + vel.z * fwd.z;
     const speed = Math.hypot(vel.x, vel.y, vel.z);
     this.speedKmh = Math.abs(this.forwardSpeed) * KMH;
-    const maxMs = s.maxSpeedKmh / KMH;
+    const maxMs = (s.maxSpeedKmh / KMH) * (fx.boost > 0 ? 1.22 : 1);
 
     // Dirección: el ángulo máximo se limita para que, a cualquier velocidad, girar
     // a tope pida justo el giro que el agarre permite (sin subviraje "en seco").
@@ -183,7 +256,7 @@ export class VehicleController {
           // Curva de par: plena hasta 75% de la punta y cae a 0 en la velocidad máxima.
           const r = this.forwardSpeed / maxMs;
           const curve = r < 0.75 ? 1 : Math.max(0, 1 - (r - 0.75) / 0.25);
-          engine = s.engineForce * input.throttle * curve;
+          engine = s.engineForce * input.throttle * curve * (fx.boost > 0 ? 1.9 : 1);
         }
       }
       if (input.brake > 0) {
@@ -194,9 +267,13 @@ export class VehicleController {
         }
       }
       if (input.throttle === 0 && input.brake === 0) brake = 4; // freno motor
+      if (fx.nitroBrake > 0 && this.forwardSpeed > 1) {
+        engine = 0;
+        brake = s.brakeForce * 2.6;
+      }
     }
 
-    const handbrake = input.handbrake && !locked;
+    const handbrake = (input.handbrake || fx.nitroBrake > 0) && !locked;
     for (let i = 0; i < 4; i++) {
       const front = i < 2;
       v.setWheelSteering(i, front ? this.steer : 0);
@@ -249,7 +326,8 @@ export class VehicleController {
     for (let i = 0; i < 4; i++) if (v.wheelIsInContact(i)) contacts++;
     const vF = this.forwardSpeed;
     // Solo con el coche apoyado y nivelado: nunca empujar un coche volcado o contra un muro.
-    if (locked || contacts < 3 || Math.abs(vF) < 2 || up.y < 0.85) return;
+    // Durante el trompo de un impacto el ESC se desactiva: el coche derrapa.
+    if (locked || this.fx.spin > 0 || contacts < 3 || Math.abs(vF) < 2 || up.y < 0.85) return;
     const w = this.body.angvel();
     const yawRate = w.x * up.x + w.y * up.y + w.z * up.z;
     const limit = this.lateralLimit / Math.abs(vF);

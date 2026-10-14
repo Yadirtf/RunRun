@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore.js';
 import { useGameState } from '../hooks/useGameState.js';
 import { PlayerList } from '../components/PlayerList.jsx';
 import { TrackPicker } from '../components/TrackPicker.jsx';
+import { PowerupToggle } from '../components/PowerupToggle.jsx';
 import { GarageCard, CarShowroom } from '../components/CarSelector.jsx';
 import { TRACKS } from '@runrun/shared/tracks';
 import { enterLandscape } from '../lib/landscape.js';
@@ -74,6 +75,7 @@ export function RoomLobby({ client }) {
         <section className="glass room-track enter delay-1">
           <h2>Circuito {isHost ? '' : <small>elige el anfitrión</small>}</h2>
           <TrackPicker value={room.trackId} onChange={(id) => client.selectTrack(id)} disabled={!isHost} />
+          <PowerupToggle enabled={room.powerups !== false} disabled={!isHost} onChange={(on) => client.setOptions({ powerups: on })} />
           <div className="invite-box">
             <span className="eyebrow">Enlace de invitación</span>
             <button type="button" className="link-preview" onClick={copy} title="Copiar enlace">{link}</button>

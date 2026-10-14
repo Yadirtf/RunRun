@@ -8,14 +8,19 @@ export class InputController {
     this.touch = { throttle: 0, brake: 0, steer: 0, handbrake: 0 };
     this.actions = new Set();
     this.smoothedSteer = 0;
+    this.padPrev = [];
     this.onKeyDown = (e) => {
       if (e.target instanceof HTMLInputElement) return;
       const k = e.code;
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(k)) e.preventDefault();
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(k)) e.preventDefault();
       if (!this.keys.has(k)) {
         if (k === 'KeyR') this.actions.add('reset');
         if (k === 'KeyC') this.actions.add('camera');
         if (k === 'KeyM') this.actions.add('mute');
+        // Poderes: E / Intro dispara hacia delante, Q hacia atrás, Tab cambia de poder.
+        if (k === 'KeyE' || k === 'Enter' || k === 'NumpadEnter') this.actions.add('fire');
+        if (k === 'KeyQ') this.actions.add('fire_back');
+        if (k === 'Tab' || k === 'ShiftLeft') this.actions.add('cycle');
       }
       this.keys.add(k);
     };
@@ -48,6 +53,12 @@ export class InputController {
       throttle = Math.max(throttle, pad.buttons[7]?.value ?? 0);
       brake = Math.max(brake, pad.buttons[6]?.value ?? 0);
       handbrake = handbrake || Boolean(pad.buttons[0]?.pressed);
+      // Poderes: RB dispara (con el stick hacia abajo, hacia atrás), X atrás, LB cambia.
+      const pressed = (i) => Boolean(pad.buttons[i]?.pressed) && !this.padPrev[i];
+      if (pressed(5)) this.actions.add((pad.axes[1] ?? 0) > 0.6 ? 'fire_back' : 'fire');
+      if (pressed(2)) this.actions.add('fire_back');
+      if (pressed(4)) this.actions.add('cycle');
+      this.padPrev = pad.buttons.map((b) => b.pressed);
     }
     throttle = Math.max(throttle, this.touch.throttle);
     brake = Math.max(brake, this.touch.brake);

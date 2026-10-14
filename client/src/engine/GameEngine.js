@@ -18,6 +18,8 @@ import { ParticleSystem } from './ParticleSystem.js';
 import { AudioManager } from './AudioManager.js';
 import { disposeTextures } from './textures.js';
 import { qualityPreset } from './quality.js';
+import { PowerupSystem, applyHitAnim } from './powerups/PowerupSystem.js';
+import { WRECK_MS } from '@runrun/shared/powerups';
 
 const STEP = 1 / 60;
 const HUD_INTERVAL = 1 / 15;
@@ -34,7 +36,8 @@ function initRapier() {
  * red sin conocer Socket.io ni React: recibe un puerto de red (`net`) y
  * publica telemetría para el HUD mediante `onHud`.
  *
- * @typedef {{ sendTransform(buf: ArrayBuffer): void, sendCheckpoint(id: number): void }} NetPort
+ * @typedef {{ sendTransform(buf: ArrayBuffer): void, sendCheckpoint(id: number): void,
+ *   pickupPowerup?(pad: number): void, firePowerup?(shot: object): void }} NetPort
  */
 export class GameEngine {
   /**
@@ -73,6 +76,9 @@ export class GameEngine {
     this.curr = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
     this.renderPos = new THREE.Vector3();
     this.renderQuat = new THREE.Quaternion();
+    /** Destrozado por poderes: segundos hasta reaparecer en pista. */
+    this.wreckTimer = 0;
+    this.hitAnim = null;
   }
 
   progress(progress, label) {
@@ -127,7 +133,9 @@ export class GameEngine {
     this.chase = new ChaseCamera(this.camera);
     this.input = new InputController();
     this.particles = new ParticleSystem(this.scene);
+    this.sparks = new ParticleSystem(this.scene, { additive: true, growth: -0.8, rise: -2, opacity: 1 });
     this.audio = new AudioManager();
+    if (this.opts.powerups) this.power = new PowerupSystem(this);
     this.checkpoints = new CheckpointSystem(this.path, this.trackDef, {
       onCheckpoint: (id) => this.handleCheckpoint(id),
     });
@@ -236,6 +244,11 @@ export class GameEngine {
     const actions = this.input.consumeActions();
     if (actions.includes('camera')) this.chase.cycle();
     if (actions.includes('mute')) this.audio.toggleMute();
+    if (this.power && this.canUsePower()) {
+      if (actions.includes('cycle')) this.power.cycle();
+      if (actions.includes('fire')) this.power.fire(false);
+      if (actions.includes('fire_back')) this.power.fire(true);
+    }
 
     let input = this.input.read(dt);
     if (this.finished) input = { throttle: 0, brake: 0.3, steer: 0, handbrake: false };
@@ -250,7 +263,7 @@ export class GameEngine {
       this.world.step();
       const broken = !this.vehicle.sanitize();
       this.snapshotState();
-      if (flipped || broken) this.resetToTrack();
+      if (broken || (flipped && this.wreckTimer <= 0)) this.resetToTrack();
       this.accumulator -= STEP;
       steps++;
     }
@@ -260,6 +273,11 @@ export class GameEngine {
     this.renderQuat.slerpQuaternions(this.prev.q, this.curr.q, alpha);
 
     this.updateTrackState(dt, locked, actions);
+    if (this.wreckTimer > 0) {
+      this.wreckTimer -= dt;
+      if (this.wreckTimer <= 0) this.resetToTrack();
+    }
+    this.power?.update(dt, { canPickup: !locked && !this.finished && this.wreckTimer <= 0 });
     this.updateVisuals(dt, input);
     this.updateCountdown(raceMs);
 
@@ -299,6 +317,12 @@ export class GameEngine {
     const pinned = !locked && !this.finished && this.lastInput?.throttle > 0 && v.speedKmh < 2;
     this.stuckTimer = unsupported || pinned ? this.stuckTimer + dt : Math.max(0, this.stuckTimer - dt * 0.5);
     const stuck = this.stuckTimer > 3;
+    // Destrozado: quieto hasta reaparecer (ni R ni el vigilante de atasco).
+    if (this.wreckTimer > 0) {
+      this.stuckTimer = 0;
+      if (lost) this.resetToTrack();
+      return;
+    }
     if ((actions.includes('reset') && this.resetCooldown === 0) || lost || stuck) this.resetToTrack();
   }
 
@@ -315,6 +339,58 @@ export class GameEngine {
     this.chase.initialized = false;
   }
 
+  // ---- Poderes (ver powerups/PowerupSystem.js) ----
+
+  onPowerEvents(events) {
+    this.power?.onEvents(events);
+  }
+
+  onPowerInventory(items) {
+    this.power?.setInventory(items);
+  }
+
+  canUsePower() {
+    return this.raceClock() >= 0 && !this.finished && this.wreckTimer <= 0;
+  }
+
+  /** Posición y orientación (de dibujo) de cualquier coche de la carrera. */
+  carState(id) {
+    if (id === this.opts.myId) return this.car ? { position: this.car.root.position, quaternion: this.car.root.quaternion } : null;
+    const r = this.remotes.get(id);
+    return r?.ready ? { position: r.position, quaternion: r.quaternion } : null;
+  }
+
+  nameOf(id) {
+    return this.opts.players.find((p) => p.id === id)?.nickname ?? 'Alguien';
+  }
+
+  /** Impacto confirmado por el servidor sobre el coche propio. */
+  applyLocalHit(e) {
+    const kind = e.wrecked ? 'wreck' : e.type;
+    this.vehicle.applyHit(kind, e.dir, Math.random() < 0.5 ? -1 : 1);
+    this.chase.shake = e.wrecked || e.type === 'shunt' || e.type === 'mine' ? 2.2 : 1.2;
+    if (e.wrecked) this.wreckTimer = WRECK_MS / 1000 - 0.2;
+    navigator.vibrate?.(e.wrecked ? [60, 40, 120] : 50);
+  }
+
+  localNitro(brake, seconds) {
+    if (brake) this.vehicle.startNitroBrake(seconds);
+    else {
+      this.vehicle.startBoost(seconds);
+      this.chase.boost = seconds;
+    }
+  }
+
+  /** Vuelco visual del modelo al recibir un misil o una mina. */
+  flipCar(id, kind) {
+    const anim = { kind, t0: this.time, sign: Math.random() < 0.5 ? -1 : 1 };
+    if (id === this.opts.myId) this.hitAnim = anim;
+    else {
+      const r = this.remotes.get(id);
+      if (r) r.hitAnim = { ...anim, t0: performance.now() / 1000 };
+    }
+  }
+
   handleCheckpoint(id) {
     this.opts.net.sendCheckpoint(id);
     if (id === 0 && this.checkpoints.finished) {
@@ -327,6 +403,7 @@ export class GameEngine {
     const root = this.car.root;
     root.position.copy(this.renderPos);
     root.quaternion.copy(this.renderQuat);
+    if (this.hitAnim && !applyHitAnim(root, this.hitAnim, this.time)) this.hitAnim = null;
     const v = this.vehicle;
     const susp = [0, 1, 2, 3].map((i) => v.wheelState(i).suspension);
     const spin = v.wheelState(0).rotation;
@@ -336,6 +413,7 @@ export class GameEngine {
 
     this.emitParticles(dt);
     this.particles.update(dt);
+    this.sparks.update(dt);
     this.landscape.update(this.time);
 
     if (this.opts.startTime == null) {
@@ -456,6 +534,8 @@ export class GameEngine {
       position: standings.findIndex((s) => s.id === this.opts.myId) + 1,
       standings: standings.map(({ id, nickname, color, x, z }) => ({ id, nickname, color, x, z })),
       muted: this.audio.muted,
+      power: this.power?.hudState() ?? null,
+      wrecked: this.wreckTimer > 0,
     });
   }
 
@@ -464,6 +544,7 @@ export class GameEngine {
     const h = this.canvas.clientHeight || window.innerHeight;
     this.setup.resize(w, h);
     this.particles?.setViewportHeight(h);
+    this.sparks?.setViewportHeight(h);
   }
 
   dispose() {
@@ -475,7 +556,9 @@ export class GameEngine {
     this.audio?.dispose();
     for (const id of [...this.remotes.keys()]) this.removePlayer(id);
     if (this.car) disposeCar(this.car);
+    this.power?.dispose();
     this.particles?.dispose();
+    this.sparks?.dispose();
     this.landscape?.dispose();
     this.track?.dispose();
     this.vehicle?.dispose();

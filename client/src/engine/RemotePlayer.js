@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createCar, poseWheels, disposeCar } from './CarFactory.js';
+import { applyHitAnim } from './powerups/PowerupSystem.js';
 
 const INTERP_DELAY_MS = 110;
 const BUFFER_SIZE = 8;
@@ -89,6 +90,7 @@ export class RemotePlayer {
       this.car.root.visible = true;
       this.car.root.position.copy(this.position);
       this.car.root.quaternion.copy(this.quaternion);
+      if (this.hitAnim && !applyHitAnim(this.car.root, this.hitAnim, now / 1000)) this.hitAnim = null;
       poseWheels(this.car.wheels, this.car.dim, { steer: this.steer, spin: this.spin });
     }
   }
