@@ -645,8 +645,8 @@ kbd {
 
 /* ----- Poderes ----- */
 .power-hud {
-  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  position: absolute; left: 20px; bottom: 64px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
   pointer-events: none; font-family: var(--font-body);
 }
 .power-health { display: flex; align-items: center; gap: 8px; }
@@ -691,8 +691,8 @@ kbd {
   display: grid; place-items: center; font-size: 11px; color: #fff; background: var(--c); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 .power-info {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  min-height: 32px; text-align: center; font-size: 12px; color: rgba(255, 255, 255, 0.85);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-height: 32px; max-width: 300px; text-align: left; font-size: 12px; color: rgba(255, 255, 255, 0.85);
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
 }
 .power-info strong { font-family: var(--font-display); font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; }
@@ -701,7 +701,6 @@ kbd {
   display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 4px; font: 700 10px var(--font-body);
   background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.25);
 }
-.controls-hint.with-power { bottom: 150px; }
 
 .power-warning {
   position: absolute; left: 50%; top: 13%; transform: translateX(-50%);
@@ -748,12 +747,20 @@ kbd {
 .power-fire.back { width: clamp(42px, 12cqh, 52px); height: clamp(42px, 12cqh, 52px); font-size: 16px; color: #fff; border-color: rgba(255, 255, 255, 0.3); }
 .power-fire:disabled { opacity: 0.4; box-shadow: none; }
 .power-fire:active:not(:disabled) { transform: scale(0.92); }
-.is-touch .power-hud { bottom: max(10px, env(safe-area-inset-bottom)); gap: 6px; }
-.is-touch .power-health-bar { width: clamp(120px, 22cqw, 200px); height: 6px; }
-.is-touch .power-slot { width: clamp(34px, 10cqh, 42px); height: clamp(34px, 10cqh, 42px); border-radius: 10px; }
-.is-touch .power-slot.selected { width: clamp(40px, 12cqh, 50px); height: clamp(40px, 12cqh, 50px); }
-.is-touch .power-info { min-height: 0; font-size: 10px; }
-.is-touch .power-info .muted { display: none; }
+.is-touch .power-hud {
+  left: 50%; transform: translateX(-50%); bottom: max(8px, env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: auto auto; grid-template-areas: "health health" "slots fire";
+  align-items: end; justify-items: center; column-gap: 12px; row-gap: 6px;
+}
+.is-touch .power-health { grid-area: health; }
+.is-touch .power-slots { grid-area: slots; gap: 8px; }
+.is-touch .power-touch { grid-area: fire; gap: 10px; }
+.is-touch .power-info { display: none; }
+.is-touch .power-health-bar { width: clamp(110px, 20cqw, 180px); height: 6px; }
+.is-touch .power-slot { width: 32px; height: 32px; border-radius: 9px; }
+.is-touch .power-slot.selected { width: 38px; height: 38px; border-radius: 11px; }
+.is-touch .power-fire { width: 56px; height: 56px; }
+.is-touch .power-fire.back { width: 40px; height: 40px; }
 .is-touch .power-feed { left: 50%; top: calc(4px + clamp(120px, 30cqh, 170px)); transform: translateX(-50%); align-items: center; font-size: 11px; max-width: 60cqw; }
 .is-touch .power-warning { top: calc(4px + clamp(120px, 30cqh, 170px) + 6px); font-size: 14px; padding: 6px 14px; }
 @media (max-width: 900px) {

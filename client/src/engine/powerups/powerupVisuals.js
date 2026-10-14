@@ -67,8 +67,6 @@ export function createVisualKit() {
   const domeWire = new THREE.IcosahedronGeometry(1, 2);
   const bubble = new THREE.SphereGeometry(1, 32, 18);
   bubble.scale(1.55, 1.15, 2.85);
-  const bubbleWire = new THREE.IcosahedronGeometry(1, 2);
-  bubbleWire.scale(1.58, 1.18, 2.9);
   const padRing = new THREE.RingGeometry(1.5, 1.85, 40);
   const beam = new THREE.CylinderGeometry(0.08, 0.5, 6, 10, 1, true);
   const wave = new THREE.RingGeometry(0.8, 1, 56);
@@ -79,10 +77,10 @@ export function createVisualKit() {
   const mineMat = new THREE.MeshStandardMaterial({
     color: '#1d1f24', metalness: 0.7, roughness: 0.4, emissive: new THREE.Color(POWERUPS.mine.color), emissiveIntensity: 0.35,
   });
-  const geometries = [missile, bolt, mine, dome, domeWire, bubble, bubbleWire, padRing, beam, wave];
+  const geometries = [missile, bolt, mine, dome, domeWire, bubble, padRing, beam, wave];
   const shared = new Set([missileMat, mineMat]);
   return {
-    missile, bolt, mine, dome, domeWire, bubble, bubbleWire, padRing, beam, wave,
+    missile, bolt, mine, dome, domeWire, bubble, padRing, beam, wave,
     missileMat, mineMat, shared,
     dispose() {
       geometries.forEach((g) => g.dispose());

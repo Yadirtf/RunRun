@@ -133,7 +133,7 @@ export class PowerupSystem {
   }
 
   select(slot) {
-    if (slot < this.items.length) this.selected = slot;
+    if (slot >= 0 && slot < this.items.length) this.selected = slot;
   }
 
   /** Dispara el poder seleccionado hacia delante o hacia atrás. */
@@ -324,15 +324,7 @@ export class PowerupSystem {
     if (id === this.myId) this.shieldUntil = until;
     let sh = this.shields.get(id);
     if (!sh) {
-      const mesh = new THREE.Mesh(this.kit.bubble, new THREE.MeshBasicMaterial({
-        color: new THREE.Color(POWERUPS.shield.color).multiplyScalar(1.2), transparent: true, opacity: 0.22,
-        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
-      }));
-      const wire = new THREE.Mesh(this.kit.bubbleWire, new THREE.MeshBasicMaterial({
-        color: new THREE.Color(POWERUPS.shield.color).multiplyScalar(2), wireframe: true, transparent: true, opacity: 0.25,
-        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
-      }));
-      mesh.add(wire);
+      const mesh = new THREE.Mesh(this.kit.bubble, shieldMaterial(POWERUPS.shield.color));
       this.group.add(mesh);
       sh = { mesh, until: 0, born: this.time };
       this.shields.set(id, sh);
@@ -459,7 +451,6 @@ export class PowerupSystem {
       if (!car || this.time >= sh.until) {
         sh.mesh.removeFromParent();
         sh.mesh.material.dispose();
-        sh.mesh.children[0].material.dispose();
         this.shields.delete(id);
         if (id === this.myId) this.shieldUntil = 0;
         continue;
@@ -470,8 +461,10 @@ export class PowerupSystem {
       const fade = Math.min(1, (sh.until - this.time) / 0.4, (this.time - sh.born) / 0.2);
       const pulse = 1 + Math.sin(this.time * 6) * 0.025;
       sh.mesh.scale.setScalar(pulse * (0.7 + 0.3 * fade));
-      sh.mesh.material.opacity = 0.18 * fade + (sh.until - this.time < 1.5 ? (Math.sin(this.time * 20) > 0 ? 0.08 : 0) : 0);
-      sh.mesh.children[0].rotation.y += dt * 0.8;
+      // Parpadea en el último segundo y medio para avisar de que se acaba.
+      const ending = sh.until - this.time < 1.5 && Math.sin(this.time * 20) < 0;
+      sh.mesh.material.uniforms.opacity.value = fade * (ending ? 0.35 : 1);
+      sh.mesh.material.uniforms.time.value = this.time;
     }
     for (const [id, n] of this.nitros) {
       const car = this.host.carState(id);
@@ -654,6 +647,35 @@ function easeOut(u) {
 function easeOutBack(u) {
   const c = 1.7;
   return 1 + (c + 1) * (u - 1) ** 3 + c * (u - 1) ** 2;
+}
+
+/** Burbuja de escudo: casi transparente de frente y brillante en el borde (fresnel) con bandas que suben. */
+function shieldMaterial(color) {
+  return new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(color).multiplyScalar(1.8) }, opacity: { value: 1 }, time: { value: 0 } },
+    vertexShader: `
+      varying vec3 vNormal; varying vec3 vView; varying float vY;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vNormal = normalize(normalMatrix * normal);
+        vView = normalize(-mv.xyz);
+        vY = position.y;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform vec3 color; uniform float opacity; uniform float time;
+      varying vec3 vNormal; varying vec3 vView; varying float vY;
+      void main() {
+        float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.2);
+        float bands = 0.5 + 0.5 * sin(vY * 9.0 - time * 5.0);
+        float a = opacity * (0.04 + rim * 0.75 + bands * rim * 0.25);
+        gl_FragColor = vec4(color, a);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
 }
 
 const UP_Z = new THREE.Vector3(0, 0, 1);
